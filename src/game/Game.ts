@@ -21,6 +21,8 @@ export class Game {
     private vfx: ParticleSystem;
     private restartBtn: HTMLButtonElement;
     private homeBtn: HTMLButtonElement;
+    private pauseOverlay: HTMLDivElement;
+    private isPaused: boolean = false;
     private lastSpawnTime: number = 0;
     private wasFPressed = false; // DEBUG ONLY
     private playerGroup: number;
@@ -60,6 +62,22 @@ export class Game {
         this.homeBtn.innerText = '归隐山林';
         if (container) container.appendChild(this.homeBtn);
         this.homeBtn.onclick = () => location.reload();
+
+        // Create Pause Overlay
+        this.pauseOverlay = document.createElement('div');
+        this.pauseOverlay.className = 'pause-overlay';
+        this.pauseOverlay.innerHTML = `
+            <div class="pause-content">
+                <h2>战 局 中 止</h2>
+                <div class="pause-actions">
+                    <button id="resume-btn">连 续 战 斗</button>
+                    <button id="pause-home-btn">退 出 战 局</button>
+                </div>
+            </div>
+        `;
+        if (container) container.appendChild(this.pauseOverlay);
+        this.pauseOverlay.querySelector('#resume-btn')?.addEventListener('click', () => this.togglePause());
+        this.pauseOverlay.querySelector('#pause-home-btn')?.addEventListener('click', () => location.reload());
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -104,6 +122,10 @@ export class Game {
 
     private setupInputs() {
         window.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape') {
+                this.togglePause();
+                return;
+            }
             if (['KeyA', 'KeyD', 'KeyS', 'Space', 'KeyF'].includes(e.code)) {
                 e.preventDefault();
             }
@@ -129,121 +151,131 @@ export class Game {
     }
 
     private loop() {
-        const now = Date.now();
-        const intervalMs = SPAWN.DIFFICULTY[this.difficulty].interval;
-        if (now - this.lastSpawnTime > intervalMs) {
-            this.spawnEnemy();
-            this.lastSpawnTime = now;
-        }
-
-        // 1. Process player inputs (Only if alive)
-        if (!this.character.isDead) {
-            const playerInput = {
-                left: this.keys['KeyA'],
-                right: this.keys['KeyD'],
-                jump: this.keys['Space'],
-                flip: this.keys['KeyS']
-            };
-            
-            // Handle Reconstruction Flip for Player
-            if (playerInput.flip && !this.wasPlayerFlipPressed) {
-                this.character = this.flipCharacter(this.character);
-                this.ais.forEach((ai, i) => ai.updateReferences(this.enemies[i], this.character));
-            }
-            this.wasPlayerFlipPressed = playerInput.flip;
-            this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y });
-        }
-
-        // --- DEBUG KEY BLOCK (F: Kill Random Enemy) ---
-        if (this.keys['KeyF'] && !this.wasFPressed) {
-            const aliveEnemies = this.enemies.filter(e => !e.isDead);
-            if (aliveEnemies.length > 0) {
-                const victim = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-                victim.takeDamage(1000); // Fatal damage
-            }
-        }
-        this.wasFPressed = this.keys['KeyF'];
-        // ----------------------------------------------
-
-        // 2. Process AI inputs
-        this.enemies.forEach((enemy, i) => {
-            if (enemy.isDead) {
-                // Count score once
-                if (!enemy.scoreCounted) {
-                    this.currentScore += SPAWN.DIFFICULTY[this.difficulty].scoreReward;
-                    this.killsInSession++;
-                    enemy.scoreCounted = true;
-
-                    // Try drop medicine if not Nightmare
-                    if (this.difficulty !== 'NIGHTMARE') {
-                        this.tryDropMedicine(enemy.torso.position.x, enemy.torso.position.y);
-                    }
-                }
-
-                // Cleanup Sword for dead enemies after 2 seconds
-                if (enemy.deathTime && enemy.sword) {
-                    if (now - enemy.deathTime > 2000) {
-                        Matter.Composite.remove(enemy.composite, enemy.sword);
-                        enemy.sword = undefined;
-                    }
-                }
-                enemy.update({ left: false, right: false, jump: false, flip: false });
-                return;
+        if (!this.isPaused) {
+            const now = Date.now();
+            const intervalMs = SPAWN.DIFFICULTY[this.difficulty].interval;
+            if (now - this.lastSpawnTime > intervalMs) {
+                this.spawnEnemy();
+                this.lastSpawnTime = now;
             }
 
-            const ai = this.ais[i];
-            const aiRaw = ai.getInputs();
-            const { input: eIn, mouse: eMouse } = this.processCharacterInput(aiRaw.inputs, aiRaw.mousePos, enemy);
-
-            // Handle Reconstruction Flip for AI
-            if (eIn.flip && !this.wasEnemiesFlipPressed[i]) {
-                const newEnemy = this.flipCharacter(enemy);
-                this.enemies[i] = newEnemy;
-                ai.updateReferences(newEnemy, this.character);
-            }
-            this.wasEnemiesFlipPressed[i] = eIn.flip;
-            this.enemies[i].update(eIn, eMouse);
-        });
-
-        // Camera Follow Logic (Follow player only)
-        const targetX = this.character.torso.position.x - this.canvas.width / 2;
-        this.camera.x += (targetX - this.camera.x) * 0.1; // Smooth follow
-
-        this.vfx.update(this.canvas.height - 100);
-
-        // Show buttons if player is dead (no more victory condition)
-        if (this.character.isDead) {
-            if (this.restartBtn.style.display !== 'block') {
-                // Just died: Save total score for upgrading
-                this.totalScore += this.currentScore;
-                localStorage.setItem('wuxia_total_score', this.totalScore.toString());
-
-                // Save to Leaderboard (Top 20 with Date)
-                let leaderboard: {score: number, date: string}[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+            // 1. Process player inputs (Only if alive)
+            if (!this.character.isDead) {
+                const playerInput = {
+                    left: this.keys['KeyA'],
+                    right: this.keys['KeyD'],
+                    jump: this.keys['Space'],
+                    flip: this.keys['KeyS']
+                };
                 
-                // Migration check: if old data was number[], clear it or handle it
-                if (leaderboard.length > 0 && typeof leaderboard[0] === 'number') {
-                    leaderboard = [];
+                // Handle Reconstruction Flip for Player
+                if (playerInput.flip && !this.wasPlayerFlipPressed) {
+                    this.character = this.flipCharacter(this.character);
+                    this.ais.forEach((ai, i) => ai.updateReferences(this.enemies[i], this.character));
+                }
+                this.wasPlayerFlipPressed = playerInput.flip;
+                this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y });
+            }
+
+            // --- DEBUG KEY BLOCK (F: Kill Random Enemy) ---
+            if (this.keys['KeyF'] && !this.wasFPressed) {
+                const aliveEnemies = this.enemies.filter(e => !e.isDead);
+                if (aliveEnemies.length > 0) {
+                    const victim = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                    victim.takeDamage(1000); // Fatal damage
+                }
+            }
+            this.wasFPressed = this.keys['KeyF'];
+            // ----------------------------------------------
+
+            // 2. Process AI inputs
+            this.enemies.forEach((enemy, i) => {
+                if (enemy.isDead) {
+                    // Count score once
+                    if (!enemy.scoreCounted) {
+                        this.currentScore += SPAWN.DIFFICULTY[this.difficulty].scoreReward;
+                        this.killsInSession++;
+                        enemy.scoreCounted = true;
+
+                        // Try drop medicine if not Nightmare
+                        if (this.difficulty !== 'NIGHTMARE') {
+                            this.tryDropMedicine(enemy.torso.position.x, enemy.torso.position.y);
+                        }
+                    }
+
+                    // Cleanup Sword for dead enemies after 2 seconds
+                    if (enemy.deathTime && enemy.sword) {
+                        if (now - enemy.deathTime > 2000) {
+                            Matter.Composite.remove(enemy.composite, enemy.sword);
+                            enemy.sword = undefined;
+                        }
+                    }
+                    enemy.update({ left: false, right: false, jump: false, flip: false });
+                    return;
                 }
 
-                const now = new Date();
-                const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                
-                leaderboard.push({ score: this.currentScore, date: dateStr });
-                leaderboard.sort((a, b) => b.score - a.score);
-                leaderboard = leaderboard.slice(0, 20);
-                localStorage.setItem('wuxia_leaderboard', JSON.stringify(leaderboard));
+                const ai = this.ais[i];
+                const aiRaw = ai.getInputs();
+                const { input: eIn, mouse: eMouse } = this.processCharacterInput(aiRaw.inputs, aiRaw.mousePos, enemy);
+
+                // Handle Reconstruction Flip for AI
+                if (eIn.flip && !this.wasEnemiesFlipPressed[i]) {
+                    const newEnemy = this.flipCharacter(enemy);
+                    this.enemies[i] = newEnemy;
+                    ai.updateReferences(newEnemy, this.character);
+                }
+                this.wasEnemiesFlipPressed[i] = eIn.flip;
+                this.enemies[i].update(eIn, eMouse);
+            });
+
+            // Camera Follow Logic (Follow player only)
+            const targetX = this.character.torso.position.x - this.canvas.width / 2;
+            this.camera.x += (targetX - this.camera.x) * 0.1; // Smooth follow
+
+            this.vfx.update(this.canvas.height - 100);
+
+            // Show buttons if player is dead (no more victory condition)
+            if (this.character.isDead) {
+                if (this.restartBtn.style.display !== 'block') {
+                    // Just died: Save total score for upgrading
+                    this.totalScore += this.currentScore;
+                    localStorage.setItem('wuxia_total_score', this.totalScore.toString());
+
+                    // Save to Leaderboard (Top 20 with Date)
+                    let leaderboard: {score: number, date: string}[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+                    
+                    // Migration check: if old data was number[], clear it or handle it
+                    if (leaderboard.length > 0 && typeof leaderboard[0] === 'number') {
+                        leaderboard = [];
+                    }
+
+                    const now = new Date();
+                    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                    
+                    leaderboard.push({ score: this.currentScore, date: dateStr });
+                    leaderboard.sort((a, b) => b.score - a.score);
+                    leaderboard = leaderboard.slice(0, 20);
+                    localStorage.setItem('wuxia_leaderboard', JSON.stringify(leaderboard));
+                }
+                this.restartBtn.style.display = 'block';
+                this.homeBtn.style.display = 'block';
+            } else {
+                this.restartBtn.style.display = 'none';
+                this.homeBtn.style.display = 'none';
             }
-            this.restartBtn.style.display = 'block';
-            this.homeBtn.style.display = 'block';
-        } else {
-            this.restartBtn.style.display = 'none';
-            this.homeBtn.style.display = 'none';
         }
 
         this.draw();
 
         requestAnimationFrame(() => this.loop());
+    }
+
+    private togglePause() {
+        if (this.character.isDead) return; // Cannot pause on death screen
+
+        this.isPaused = !this.isPaused;
+        this.physics.runner.enabled = !this.isPaused;
+        this.pauseOverlay.style.display = this.isPaused ? 'flex' : 'none';
     }
 
     private spawnEnemy() {
