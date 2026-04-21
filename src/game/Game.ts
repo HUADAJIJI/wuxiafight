@@ -21,7 +21,6 @@ export class Game {
     private vfx: ParticleSystem;
     private restartBtn: HTMLButtonElement;
     private homeBtn: HTMLButtonElement;
-    private lastFrameTime: number = 0;
     private lastSpawnTime: number = 0;
     private wasFPressed = false; // DEBUG ONLY
     private playerGroup: number;
@@ -286,7 +285,7 @@ export class Game {
         this.wasEnemiesFlipPressed.push(false);
     }
 
-    private processCharacterInput(rawInput: any, rawMouse: { x: number, y: number }, char: Character) {
+    private processCharacterInput(rawInput: any, rawMouse: { x: number, y: number }, _char: Character) {
         const input = { ...rawInput };
         const mouse = { ...rawMouse };
         return { input, mouse };

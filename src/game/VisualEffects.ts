@@ -1,4 +1,3 @@
-import { COLORS } from './Constants';
 import Matter from 'matter-js';
 
 export interface Particle {
@@ -55,8 +54,6 @@ export class ParticleSystem {
     }
 
     public update(groundY: number) {
-        const cos = (a: number) => Math.cos(a);
-        const sin = (a: number) => Math.sin(a);
 
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];

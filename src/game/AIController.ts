@@ -1,12 +1,14 @@
 import { Character } from './Character';
 
-enum AIState {
-    NEUTRAL,     // Observe and sway
-    WINDUP_CLEAVE, // Raise sword high
-    STRIKE_CLEAVE, // Swing down
-    WINDUP_THRUST, // Pull back
-    STRIKE_THRUST  // Snap forward
-}
+const AIState = {
+    NEUTRAL: 0,
+    WINDUP_CLEAVE: 1,
+    STRIKE_CLEAVE: 2,
+    WINDUP_THRUST: 3,
+    STRIKE_THRUST: 4
+} as const;
+
+type AIState = typeof AIState[keyof typeof AIState];
 
 export class AIController {
     private source: Character;
