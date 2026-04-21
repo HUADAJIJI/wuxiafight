@@ -22,6 +22,11 @@ export class AIController {
         this.target = target;
     }
 
+    public updateReferences(source: Character, target: Character) {
+        this.source = source;
+        this.target = target;
+    }
+
     public getInputs() {
         const sourcePos = this.source.torso.position;
         const targetPos = this.target.torso.position;

@@ -1,282 +1,290 @@
 import Matter from 'matter-js';
 import { COLORS, CHARACTER, PHYSICS } from './Constants';
 
+export interface CharacterOptions {
+    primaryColor: string;
+    farColor: string;
+    collisionGroup: number;
+    facingDir?: number;
+}
+
 export class Character {
     public torso: Matter.Body;
     public head: Matter.Body;
     public sword?: Matter.Body;
     public facingDir: number = 1; // 1 for Right, -1 for Left
+    public hp: number;
+    public stunTimer: number = 0;
+    public isDead: boolean = false;
+    public deathTime?: number;
     public limbs: { [key: string]: Matter.Body } = {};
     public constraints: Matter.Constraint[] = [];
+    public handConstraint?: Matter.Constraint;
+    public composite: Matter.Composite;
     private world: Matter.World;
-    private wasFlipKeyPressed: boolean = false;
-    
+
     // Target angles for PD control
-    private targetAngles: { [key: string]: number } = {
+    public targetAngles: { [key: string]: number } = {
         neck: 0,
-        l_shoulder: 0.2,
-        r_shoulder: -0.2,
+        l_shoulder: 0.2,   // Back shoulder (relative)
+        r_shoulder: -0.2,  // Front shoulder (relative)
         l_elbow: 0.5,
-        r_elbow: -0.5,
+        r_elbow: -0.1,
         l_hip: 0.1,
         r_hip: -0.1,
         l_knee: 0.2,
         r_knee: -0.2,
     };
-    public composite: Matter.Composite;
 
-    constructor(x: number, y: number, world: Matter.World, options: { primaryColor: string, farColor: string, collisionGroup: number }) {
+    public readonly options: CharacterOptions;
+
+    constructor(x: number, y: number, world: Matter.World, options: CharacterOptions) {
         this.world = world;
+        this.options = options;
+        this.facingDir = options.facingDir || 1;
+        this.hp = CHARACTER.MAX_HP;
         this.composite = Matter.Composite.create({ label: 'Character' });
-        
-        // 1. Create Parts
-        const group = options.collisionGroup;
 
+        const group = options.collisionGroup;
+        const front = this.facingDir;
+        const back = -this.facingDir;
+
+        // 1. Create Parts
         this.torso = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH, CHARACTER.TORSO_HEIGHT, {
             collisionFilter: { group },
             friction: PHYSICS.FRICTION,
             frictionAir: PHYSICS.FRICTION_AIR,
-            render: { fillStyle: options.primaryColor }
-        });
-        
-        this.head = Matter.Bodies.circle(x, y - CHARACTER.TORSO_HEIGHT/2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS, {
-            collisionFilter: { group },
-            frictionAir: PHYSICS.FRICTION_AIR,
-            render: { fillStyle: COLORS.SILK }
+            render: { fillStyle: options.primaryColor },
+            label: 'torso'
         });
 
-        // 1.5. Visual Details (Headband & Sash)
-        const headband = Matter.Bodies.rectangle(x, y - CHARACTER.TORSO_HEIGHT/2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS * 2.2, 4, {
+        this.head = Matter.Bodies.circle(x, y - CHARACTER.TORSO_HEIGHT / 2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS, {
+            collisionFilter: { group },
+            frictionAir: PHYSICS.FRICTION_AIR,
+            render: { fillStyle: COLORS.SILK },
+            label: 'head'
+        });
+
+        // Visual Details
+        const headband = Matter.Bodies.rectangle(x, y - CHARACTER.TORSO_HEIGHT / 2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS * 2.2, 4, {
             collisionFilter: { group },
             render: { fillStyle: COLORS.LACQUER }
         });
-        
         const sash = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH + 2, 8, {
             collisionFilter: { group },
             angle: Math.PI / 4,
             render: { fillStyle: COLORS.GOLD }
         });
 
-        // Arms & Legs - Differentiate colors for "Near" and "Far" side
-        const farColor = options.farColor; 
-        this.limbs.l_upper_arm = this.createLimb(x - CHARACTER.TORSO_WIDTH/2, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
-        this.limbs.l_lower_arm = this.createLimb(x - CHARACTER.TORSO_WIDTH/2, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
-        this.limbs.r_upper_arm = this.createLimb(x + CHARACTER.TORSO_WIDTH/2, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, options.primaryColor);
-        this.limbs.r_lower_arm = this.createLimb(x + CHARACTER.TORSO_WIDTH/2, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, options.primaryColor);
+        // Limbs based on direction
+        const farColor = options.farColor;
+        const nearColor = options.primaryColor;
 
-        this.limbs.l_upper_leg = this.createLimb(x - 10, y + CHARACTER.TORSO_HEIGHT/2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
-        this.limbs.l_lower_leg = this.createLimb(x - 10, y + CHARACTER.TORSO_HEIGHT/2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
-        this.limbs.r_upper_leg = this.createLimb(x + 10, y + CHARACTER.TORSO_HEIGHT/2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, options.primaryColor);
-        this.limbs.r_lower_leg = this.createLimb(x + 10, y + CHARACTER.TORSO_HEIGHT/2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, options.primaryColor);
+        // Shoulder/Hip offsets
+        const shoulderW = CHARACTER.TORSO_WIDTH / 2;
+        const hipW = 10;
 
-        // 2. Constraints (Joints)
-        this.addJoint(this.torso, this.head, { x: 0, y: -CHARACTER.TORSO_HEIGHT/2 }, { x: 0, y: CHARACTER.HEAD_RADIUS }, 'neck');
-        
-        // Attach visual details
+        // "Left" limbs are always "Back", "Right" limbs are always "Front"
+        this.limbs.l_upper_arm = this.createLimb(x + back * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
+        this.limbs.l_lower_arm = this.createLimb(x + back * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
+        this.limbs.r_upper_arm = this.createLimb(x + front * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, nearColor);
+        this.limbs.r_lower_arm = this.createLimb(x + front * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, nearColor);
+
+        this.limbs.l_upper_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
+        this.limbs.l_lower_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
+        this.limbs.r_upper_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, nearColor);
+        this.limbs.r_lower_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, nearColor);
+
+        // 2. Constraints
+        this.addJoint(this.torso, this.head, { x: 0, y: -CHARACTER.TORSO_HEIGHT / 2 }, { x: 0, y: CHARACTER.HEAD_RADIUS }, 'neck');
+
         Matter.Composite.add(this.composite, [
             Matter.Constraint.create({ bodyA: this.head, bodyB: headband, stiffness: 1, length: 0, render: { visible: false } }),
             Matter.Constraint.create({ bodyA: this.torso, bodyB: sash, stiffness: 1, length: 0, render: { visible: false } })
         ]);
-        
-        this.addJoint(this.torso, this.limbs.l_upper_arm, { x: -CHARACTER.TORSO_WIDTH/2, y: -20 }, { x: 0, y: -CHARACTER.ARM_HEIGHT/2 }, 'l_shoulder');
-        this.addJoint(this.limbs.l_upper_arm, this.limbs.l_lower_arm, { x: 0, y: CHARACTER.ARM_HEIGHT/2 }, { x: 0, y: -CHARACTER.ARM_HEIGHT/2 }, 'l_elbow');
-        
-        this.addJoint(this.torso, this.limbs.r_upper_arm, { x: CHARACTER.TORSO_WIDTH/2, y: -20 }, { x: 0, y: -CHARACTER.ARM_HEIGHT/2 }, 'r_shoulder');
-        this.addJoint(this.limbs.r_upper_arm, this.limbs.r_lower_arm, { x: 0, y: CHARACTER.ARM_HEIGHT/2 }, { x: 0, y: -CHARACTER.ARM_HEIGHT/2 }, 'r_elbow');
 
-        this.addJoint(this.torso, this.limbs.l_upper_leg, { x: -10, y: CHARACTER.TORSO_HEIGHT/2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT/2 }, 'l_hip');
-        this.addJoint(this.limbs.l_upper_leg, this.limbs.l_lower_leg, { x: 0, y: CHARACTER.LEG_HEIGHT/2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT/2 }, 'l_knee');
-        
-        this.addJoint(this.torso, this.limbs.r_upper_leg, { x: 10, y: CHARACTER.TORSO_HEIGHT/2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT/2 }, 'r_hip');
-        this.addJoint(this.limbs.r_upper_leg, this.limbs.r_lower_leg, { x: 0, y: CHARACTER.LEG_HEIGHT/2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT/2 }, 'r_knee');
+        this.addJoint(this.torso, this.limbs.l_upper_arm, { x: back * shoulderW, y: -20 }, { x: 0, y: -CHARACTER.ARM_HEIGHT / 2 }, 'l_shoulder');
+        this.addJoint(this.limbs.l_upper_arm, this.limbs.l_lower_arm, { x: 0, y: CHARACTER.ARM_HEIGHT / 2 }, { x: 0, y: -CHARACTER.ARM_HEIGHT / 2 }, 'l_elbow');
+        this.addJoint(this.torso, this.limbs.r_upper_arm, { x: front * shoulderW, y: -20 }, { x: 0, y: -CHARACTER.ARM_HEIGHT / 2 }, 'r_shoulder');
+        this.addJoint(this.limbs.r_upper_arm, this.limbs.r_lower_arm, { x: 0, y: CHARACTER.ARM_HEIGHT / 2 }, { x: 0, y: -CHARACTER.ARM_HEIGHT / 2 }, 'r_elbow');
 
-        // 3. Create Fine YaoDao (Ming Sabre) - Compound Body
+        this.addJoint(this.torso, this.limbs.l_upper_leg, { x: back * hipW, y: CHARACTER.TORSO_HEIGHT / 2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT / 2 }, 'l_hip');
+        this.addJoint(this.limbs.l_upper_leg, this.limbs.l_lower_leg, { x: 0, y: CHARACTER.LEG_HEIGHT / 2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT / 2 }, 'l_knee');
+        this.addJoint(this.torso, this.limbs.r_upper_leg, { x: front * hipW, y: CHARACTER.TORSO_HEIGHT / 2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT / 2 }, 'r_hip');
+        this.addJoint(this.limbs.r_upper_leg, this.limbs.r_lower_leg, { x: 0, y: CHARACTER.LEG_HEIGHT / 2 }, { x: 0, y: -CHARACTER.LEG_HEIGHT / 2 }, 'r_knee');
+
+        // 3. Create YaoDao
+        const swordX = x + front * 50;
         const bladeWidth = CHARACTER.SWORD_WIDTH;
         const bladeHeight = CHARACTER.SWORD_HEIGHT;
-        
-        // Blade Base (Straight part)
-        const bladeBase = Matter.Bodies.rectangle(x + 50, y + 10, bladeWidth, bladeHeight - 30, {
-            render: { fillStyle: COLORS.SILK },
-            restitution: 0,
-            friction: 1
-        });
 
-        // Blade Tip (Triangular/Pointed part)
-        const bladeTip = Matter.Bodies.fromVertices(x + 50, y - bladeHeight/2 + 15, [[
-            { x: -bladeWidth / 2, y: 15 },
-            { x: bladeWidth / 2, y: 15 },
-            { x: 15, y: -15 }, // Sharp curved tip
-            { x: -bladeWidth / 2, y: -10 }
-        ]], {
-            render: { fillStyle: COLORS.SILK },
-            restitution: 0,
-            friction: 1
-        });
+        const bladeBase = Matter.Bodies.rectangle(swordX, y + 10, bladeWidth, bladeHeight - 30, { render: { fillStyle: COLORS.SILK }, label: 'blade' });
+        const bladeTip = Matter.Bodies.fromVertices(swordX, y - bladeHeight / 2 + 15, [[
+            { x: -bladeWidth / 2, y: 15 * front }, { x: bladeWidth / 2, y: 15 * front },
+            { x: 15 * front, y: -15 }, { x: -bladeWidth / 2, y: -10 }
+        ]], { render: { fillStyle: COLORS.SILK }, label: 'blade' });
+        // Correcting vertex mirroring above: front affects X and Y in certain logic but simpler to just scale later if needed.
+        // Actually, let's just use manual vertices mirrored by 'front'
+        const tipVertices = [
+            { x: -front * bladeWidth / 2, y: 15 },
+            { x: front * bladeWidth / 2, y: 15 },
+            { x: front * 15, y: -15 },
+            { x: -front * bladeWidth / 2, y: -10 }
+        ];
+        Matter.Body.setVertices(bladeTip, tipVertices);
+        Matter.Body.setPosition(bladeTip, { x: swordX, y: y - bladeHeight / 2 + 15 });
 
-        // Disc Guard (镡) typical for YaoDao
-        const guard = Matter.Bodies.circle(x + 50, y + bladeHeight / 2, 14, {
-            render: { fillStyle: COLORS.GOLD },
-            restitution: 0
-        });
-
-        const handle = Matter.Bodies.rectangle(x + 50, y + bladeHeight / 2 + 14, CHARACTER.SWORD_WIDTH + 2, 28, {
-            render: { fillStyle: COLORS.LACQUER },
-            restitution: 0
-        });
+        const guard = Matter.Bodies.circle(swordX, y + bladeHeight / 2, 14, { render: { fillStyle: COLORS.GOLD }, label: 'guard' });
+        const handle = Matter.Bodies.rectangle(swordX, y + bladeHeight / 2 + 14, CHARACTER.SWORD_WIDTH + 2, 28, { render: { fillStyle: COLORS.LACQUER }, label: 'handle' });
 
         this.sword = Matter.Body.create({
             parts: [bladeBase, bladeTip, guard, handle],
             collisionFilter: { group },
-            friction: 1,
-            restitution: 0,
             mass: CHARACTER.YAODAO_MASS
         });
+        Matter.Body.setInertia(this.sword, 80000);
 
-        // Set high inertia to prevent "twitching"
-        Matter.Body.setInertia(this.sword, 80000); 
-
-        const handConstraint = Matter.Constraint.create({
+        this.handConstraint = Matter.Constraint.create({
             bodyA: this.limbs.r_lower_arm,
             pointA: { x: 0, y: CHARACTER.ARM_HEIGHT / 2 },
             bodyB: this.sword,
-            pointB: { x: 0, y: bladeHeight / 2 + 14 }, 
-            stiffness: 1,
-            length: 0,
-            render: { visible: false }
+            pointB: { x: 0, y: bladeHeight / 2 + 14 },
+            stiffness: 1, length: 0, render: { visible: false }
         });
 
         Matter.Composite.add(this.composite, [
-            this.torso, this.head,
-            ...Object.values(this.limbs),
-            this.sword,
-            headband,
-            sash,
-            ...this.constraints,
-            handConstraint
+            this.torso, this.head, ...Object.values(this.limbs),
+            this.sword, headband, sash, ...this.constraints, this.handConstraint
         ]);
-        
+
         Matter.World.add(world, this.composite);
     }
 
     private createLimb(x: number, y: number, w: number, h: number, group: number, color: string) {
         return Matter.Bodies.rectangle(x, y, w, h, {
             collisionFilter: { group },
-            friction: PHYSICS.FRICTION,
-            frictionAir: PHYSICS.FRICTION_AIR,
-            render: { fillStyle: color }
+            friction: PHYSICS.FRICTION, frictionAir: PHYSICS.FRICTION_AIR,
+            render: { fillStyle: color },
+            label: 'limb'
         });
     }
 
     private addJoint(bodyA: Matter.Body, bodyB: Matter.Body, pointA: any, pointB: any, label: string) {
         const constraint = Matter.Constraint.create({
             bodyA, bodyB, pointA, pointB,
-            stiffness: 1, 
-            damping: PHYSICS.JOINT_DAMPING,
-            length: 0,
-            render: { visible: false },
-            label
+            stiffness: 1, damping: PHYSICS.JOINT_DAMPING, length: 0,
+            render: { visible: false }, label
         });
         this.constraints.push(constraint);
     }
 
     public update(input: { left: boolean, right: boolean, jump: boolean, flip: boolean }, mousePos?: { x: number, y: number }) {
-        this.applyPDControl();
-        
-        // Handle Orientation Flip (Toggle on Rising Edge)
-        if (input.flip && !this.wasFlipKeyPressed) {
-            this.facingDir *= -1;
-            console.log('Orientation Flipped (Paper Cutout Style):', this.facingDir > 0 ? 'Right' : 'Left');
+        if (this.isDead) {
+            // Even if dead, we should still call applyPDControl to handle the "limp" state decay 
+            // if we were applying any stiffness, but here we just return early to prevent movement.
+            this.applyPDControl();
+            return;
         }
-        this.wasFlipKeyPressed = input.flip;
+        this.applyPDControl();
 
-        // --- COMBAT TARGETING (Direct Physics Guiding) ---
-        // Logic always assumes Facing Right. Game.ts will mirror mousePos for us.
         if (mousePos && this.sword) {
-            // 1. Position the arm generally toward the mouse
+            const shoulderX = this.torso.position.x + (this.facingDir * CHARACTER.TORSO_WIDTH / 2);
             const dy = mousePos.y - (this.torso.position.y - 20);
-            const dx = mousePos.x - (this.torso.position.x + CHARACTER.TORSO_WIDTH/2);
+            const dx = mousePos.x - shoulderX;
             const targetAngle = Math.atan2(dy, dx);
-            
-            // Limit arm target to prevent twisting
-            const relativeArmAngle = Math.max(-1.2, Math.min(2.0, targetAngle - this.torso.angle));
-            this.targetAngles.r_shoulder += (relativeArmAngle - this.targetAngles.r_shoulder) * 0.15;
+
+            let normalizedTarget = targetAngle - this.torso.angle;
+            if (this.facingDir === -1) {
+                normalizedTarget = Math.PI - normalizedTarget;
+                while (normalizedTarget > Math.PI) normalizedTarget -= Math.PI * 2;
+                while (normalizedTarget < -Math.PI) normalizedTarget += Math.PI * 2;
+            }
+
+            const baseTarget = Math.max(-1.2, Math.min(2.0, normalizedTarget));
+            this.targetAngles.r_shoulder += (baseTarget - this.targetAngles.r_shoulder) * 0.15;
             this.targetAngles.r_elbow = -0.1;
 
-            // 2. Apply "Invisible Force" (Torque) directly to the sword
-            const currentSwordAngle = this.sword.angle;
-            const swordTargetAngle = targetAngle + Math.PI/2;
-            
-            let angleError = swordTargetAngle - currentSwordAngle;
+            let angleError = (targetAngle + Math.PI / 2) - this.sword.angle;
             while (angleError > Math.PI) angleError -= Math.PI * 2;
             while (angleError < -Math.PI) angleError += Math.PI * 2;
 
-            const guideTorque = angleError * 0.6 - this.sword.angularVelocity * 0.15;
-            const maxGuideTorque = 1.2;
-            this.sword.torque += Math.max(-maxGuideTorque, Math.min(maxGuideTorque, guideTorque));
+            this.sword.torque += Math.max(-1.2, Math.min(1.2, angleError * 0.6 - this.sword.angularVelocity * 0.15));
         }
-        
-        // Handle Walking
+
         if (input.left || input.right) {
-            const time = Date.now() * 0.01;
+            const time = Date.now() * 0.02; // Faster animation
             const walkSpeed = 0.8;
             this.targetAngles.l_hip = Math.sin(time) * walkSpeed;
             this.targetAngles.r_hip = -Math.sin(time) * walkSpeed;
-            this.targetAngles.l_knee = Math.max(0, Math.sin(time + Math.PI/2)) * walkSpeed;
-            this.targetAngles.r_knee = Math.max(0, -Math.sin(time + Math.PI/2)) * walkSpeed;
-            
-            const force = input.right ? 0.002 : -0.002;
-            Matter.Body.applyForce(this.torso, this.torso.position, { x: force, y: 0 });
+            this.targetAngles.l_knee = Math.max(0, Math.sin(time + Math.PI / 2)) * walkSpeed;
+            this.targetAngles.r_knee = Math.max(0, -Math.sin(time + Math.PI / 2)) * walkSpeed;
+            Matter.Body.applyForce(this.torso, this.torso.position, { x: input.right ? 0.004 : -0.004, y: 0 });
         } else {
-            // Reset to Idle
-            this.targetAngles.l_hip = 0.1;
-            this.targetAngles.r_hip = -0.1;
-            this.targetAngles.l_knee = 0.2;
-            this.targetAngles.r_knee = -0.2;
+            this.targetAngles.l_hip = 0.1; this.targetAngles.r_hip = -0.1;
+            this.targetAngles.l_knee = 0.2; this.targetAngles.r_knee = -0.2;
         }
 
-        const ground = this.world.bodies.find(b => b.isStatic);
-        const isGrounded = ground ? (
-            Matter.Query.collides(this.limbs.l_lower_leg, [ground]).length > 0 ||
-            Matter.Query.collides(this.limbs.r_lower_leg, [ground]).length > 0
-        ) : false;
-
-        if (input.jump && isGrounded) {
-            // Stronger jump impulse
+        const bodies = Matter.Composite.allBodies(this.world).filter(b => !Matter.Composite.allBodies(this.composite).includes(b));
+        if (input.jump && (Matter.Query.collides(this.limbs.l_lower_leg, bodies).length > 0 || Matter.Query.collides(this.limbs.r_lower_leg, bodies).length > 0)) {
             Matter.Body.applyForce(this.torso, this.torso.position, { x: 0, y: -0.15 });
-            
-            // "Solid" jump tuck pose
-            this.targetAngles.l_hip = -0.5;
-            this.targetAngles.r_hip = 0.5;
-            this.targetAngles.l_knee = 1.5;
-            this.targetAngles.r_knee = 1.5;
+            this.targetAngles.l_hip = -0.5; this.targetAngles.r_hip = 0.5;
+            this.targetAngles.l_knee = 1.5; this.targetAngles.r_knee = 1.5;
         }
-        
-        // Keep torso upright - Strengthened recovery
-        const uprightTorque = -this.torso.angle * 0.8 - this.torso.angularVelocity * 0.15;
-        const maxTorque = 0.8;
-        this.torso.torque = Math.max(-maxTorque, Math.min(maxTorque, uprightTorque));
+
+        this.torso.torque = Math.max(-0.8, Math.min(0.8, -this.torso.angle * 0.8 - this.torso.angularVelocity * 0.15));
     }
 
     private applyPDControl() {
-        // For each joint constraint, we apply torque to the child body relative to parent
+        if (this.isDead) return; // Go completely limp when dead
+
+        const isStunned = this.stunTimer > 0;
+        const stiffness = isStunned ? PHYSICS.PD_K * 0.5 : PHYSICS.PD_K;
+        const damping = isStunned ? PHYSICS.PD_D * 0.2 : PHYSICS.PD_D;
+
         this.constraints.forEach(c => {
             if (!c.label) return;
-            const bodyA = c.bodyA!;
-            const bodyB = c.bodyB!;
-            
-            const currentAngle = bodyB.angle - bodyA.angle;
-            const target = this.targetAngles[c.label] || 0;
-            
-            const error = target - currentAngle;
-            const derivative = - (bodyB.angularVelocity - bodyA.angularVelocity);
-            
-            // Moderated gains and torque limiting
-            const torque = error * (PHYSICS.PD_K * 10) + derivative * (PHYSICS.PD_D * 5);
-            const jointMaxTorque = 0.3;
-            const limitedTorque = Math.max(-jointMaxTorque, Math.min(jointMaxTorque, torque));
-            
-            bodyB.torque += limitedTorque;
-            bodyA.torque -= limitedTorque; 
+            const currentAngle = c.bodyB!.angle - c.bodyA!.angle;
+            const target = (this.targetAngles[c.label] || 0) * this.facingDir;
+            const torque = (target - currentAngle) * (stiffness * 10) - (c.bodyB!.angularVelocity - c.bodyA!.angularVelocity) * (damping * 5);
+            const limited = Math.max(-0.3, Math.min(0.3, torque));
+            c.bodyB!.torque += limited; c.bodyA!.torque -= limited;
         });
+
+        if (this.stunTimer > 0) this.stunTimer--;
+    }
+
+    public destroy() {
+        Matter.World.remove(this.world, this.composite);
+    }
+
+    public getPhysicalState() {
+        return {
+            position: { ...this.torso.position },
+            velocity: { ...this.torso.velocity },
+            angularVelocity: this.torso.angularVelocity,
+            angle: this.torso.angle,
+            hp: this.hp
+        };
+    }
+
+    public applyPhysicalState(state: any) {
+        Matter.Body.setPosition(this.torso, state.position);
+        Matter.Body.setVelocity(this.torso, state.velocity);
+        Matter.Body.setAngle(this.torso, state.angle);
+        Matter.Body.setAngularVelocity(this.torso, state.angularVelocity);
+        this.hp = state.hp ?? this.hp;
+    }
+
+    public takeDamage(amount: number) {
+        if (this.isDead) return;
+        this.hp = Math.max(0, this.hp - amount);
+        if (this.hp <= 0) {
+            this.isDead = true;
+            this.deathTime = Date.now();
+            if (this.handConstraint) {
+                Matter.Composite.remove(this.composite, this.handConstraint);
+                this.handConstraint = undefined;
+            }
+        }
     }
 }

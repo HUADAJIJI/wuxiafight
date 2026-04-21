@@ -39,9 +39,11 @@ body {
 
 .ui-overlay {
   position: absolute;
-  top: 40px;
-  left: 40px;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
   pointer-events: none;
+  text-align: center;
 }
 
 h1 {
@@ -77,4 +79,34 @@ canvas {
   background-image: url('https://www.transparenttextures.com/patterns/silk.png');
   opacity: 0.1;
   pointer-events: none;
+}
+.restart-btn {
+  position: absolute;
+  top: 75%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--color-vermilion);
+  color: var(--color-silk);
+  border: 2px solid var(--color-gold);
+  padding: 1rem 2.5rem;
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 6px 6px 0px var(--color-lacquer);
+  transition: all 0.2s ease;
+  z-index: 100;
+  display: none; /* Hidden by default */
+}
+
+.restart-btn:hover {
+  background: var(--color-gold);
+  color: var(--color-lacquer);
+  transform: translate(-52%, -52%);
+  box-shadow: 8px 8px 0px var(--color-lacquer);
+}
+
+.restart-btn:active {
+  transform: translate(-48%, -48%);
+  box-shadow: 2px 2px 0px var(--color-lacquer);
 }

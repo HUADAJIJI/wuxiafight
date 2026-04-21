@@ -37,4 +37,20 @@ export const CHARACTER = {
   SWORD_HILT_HEIGHT: 5,
   YAODAO_CURVE: 15, // Degrees/offset for blade curve
   YAODAO_MASS: 1.5,   // Reduced to prevent tipping character over
+  MAX_HP: 100,
+};
+
+export const COMBAT = {
+  VELOCITY_THRESHOLD: 1.5,   // Minimum relative velocity for damage
+  DAMAGE_SCALE: 5.0,         // Overall damage multiplier
+  PART_MULTIPLIERS: {
+    head: 3.0,
+    torso: 1.2,
+    limb: 0.5,
+  }
+};
+
+export const SPAWN = {
+  INTERVAL_MS: 10000,
+  OFFSET_X: 1000, // spawn this far outside the camera view center
 };
