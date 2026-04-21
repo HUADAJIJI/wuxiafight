@@ -1,7 +1,7 @@
 import { PhysicsEngine } from './PhysicsEngine';
 import { Character } from './Character';
 import { AIController } from './AIController';
-import { COLORS, CHARACTER, COMBAT, SPAWN } from './Constants';
+import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE } from './Constants';
 import { ParticleSystem } from './VisualEffects';
 import Matter from 'matter-js';
 import { Vector } from 'matter-js';
@@ -20,14 +20,23 @@ export class Game {
     private mouse = { x: 0, y: 0 };
     private vfx: ParticleSystem;
     private restartBtn: HTMLButtonElement;
+    private homeBtn: HTMLButtonElement;
     private lastFrameTime: number = 0;
     private lastSpawnTime: number = 0;
     private wasFPressed = false; // DEBUG ONLY
     private playerGroup: number;
     private enemyGroup: number;
     private spawnBias: number = 0.5; // Starts balanced (0.5 = 50% Left)
+    private difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE';
+    private attributes: any;
+    private currentScore: number = 0;
+    private totalScore: number = 0;
+    private killsInSession: number = 0;
+    private medicines: Matter.Body[] = [];
 
-    constructor(containerId: string) {
+    constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any) {
+        this.difficulty = difficulty;
+        this.attributes = attributes;
         this.canvas = document.createElement('canvas');
         const container = document.getElementById(containerId);
         if (container) {
@@ -35,12 +44,23 @@ export class Game {
         }
         this.ctx = this.canvas.getContext('2d')!;
 
+        // Load Total Score
+        const savedScore = localStorage.getItem('wuxia_total_score');
+        this.totalScore = savedScore ? parseInt(savedScore) : 0;
+
         // Create Restart Button
         this.restartBtn = document.createElement('button');
         this.restartBtn.className = 'restart-btn';
         this.restartBtn.innerText = '再战一回';
         if (container) container.appendChild(this.restartBtn);
         this.restartBtn.onclick = () => this.restart();
+
+        // Create Home Button
+        this.homeBtn = document.createElement('button');
+        this.homeBtn.className = 'home-btn';
+        this.homeBtn.innerText = '归隐山林';
+        if (container) container.appendChild(this.homeBtn);
+        this.homeBtn.onclick = () => location.reload();
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -55,7 +75,12 @@ export class Game {
         this.character = new Character(this.canvas.width / 2, this.canvas.height - 200, this.physics.world, {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
-            collisionGroup: this.playerGroup
+            collisionGroup: this.playerGroup,
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / 99)),
+            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / 99),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / 99),
+            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * 0.005,
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / 99)
         });
 
         this.enemies = [];
@@ -64,16 +89,16 @@ export class Game {
 
         this.vfx = new ParticleSystem();
 
-        // Spawn first enemy immediately
-        this.spawnEnemy();
-        this.lastSpawnTime = Date.now();
-
         // Register Collisions
         Matter.Events.on(this.physics.engine, 'collisionStart', (event) => {
             event.pairs.forEach(pair => this.handleCollision(pair));
         });
 
         this.setupInputs();
+        
+        // Start immediately since difficulty is already chosen
+        this.spawnEnemy();
+        this.lastSpawnTime = Date.now();
         this.physics.start();
         this.loop();
     }
@@ -106,18 +131,29 @@ export class Game {
 
     private loop() {
         const now = Date.now();
-        if (now - this.lastSpawnTime > SPAWN.INTERVAL_MS) {
+        const intervalMs = SPAWN.DIFFICULTY[this.difficulty].interval;
+        if (now - this.lastSpawnTime > intervalMs) {
             this.spawnEnemy();
             this.lastSpawnTime = now;
         }
 
-        // 1. Process PLAYER inputs
-        const playerRaw = {
-            left: this.keys['KeyA'],
-            right: this.keys['KeyD'],
-            jump: this.keys['Space'],
-            flip: this.keys['KeyS']
-        };
+        // 1. Process player inputs (Only if alive)
+        if (!this.character.isDead) {
+            const playerInput = {
+                left: this.keys['KeyA'],
+                right: this.keys['KeyD'],
+                jump: this.keys['Space'],
+                flip: this.keys['KeyS']
+            };
+            
+            // Handle Reconstruction Flip for Player
+            if (playerInput.flip && !this.wasPlayerFlipPressed) {
+                this.character = this.flipCharacter(this.character);
+                this.ais.forEach((ai, i) => ai.updateReferences(this.enemies[i], this.character));
+            }
+            this.wasPlayerFlipPressed = playerInput.flip;
+            this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y });
+        }
 
         // --- DEBUG KEY BLOCK (F: Kill Random Enemy) ---
         if (this.keys['KeyF'] && !this.wasFPressed) {
@@ -130,19 +166,21 @@ export class Game {
         this.wasFPressed = this.keys['KeyF'];
         // ----------------------------------------------
 
-        const { input: pIn, mouse: pMouse } = this.processCharacterInput(playerRaw, this.mouse, this.character);
-
-        // Handle Reconstruction Flip for Player
-        if (pIn.flip && !this.wasPlayerFlipPressed) {
-            this.character = this.flipCharacter(this.character);
-            this.ais.forEach((ai, i) => ai.updateReferences(this.enemies[i], this.character));
-        }
-        this.wasPlayerFlipPressed = pIn.flip;
-        this.character.update(pIn, pMouse);
-
         // 2. Process AI inputs
         this.enemies.forEach((enemy, i) => {
             if (enemy.isDead) {
+                // Count score once
+                if (!enemy.scoreCounted) {
+                    this.currentScore += SPAWN.DIFFICULTY[this.difficulty].scoreReward;
+                    this.killsInSession++;
+                    enemy.scoreCounted = true;
+
+                    // Try drop medicine if not Nightmare
+                    if (this.difficulty !== 'NIGHTMARE') {
+                        this.tryDropMedicine(enemy.torso.position.x, enemy.torso.position.y);
+                    }
+                }
+
                 // Cleanup Sword for dead enemies after 2 seconds
                 if (enemy.deathTime && enemy.sword) {
                     if (now - enemy.deathTime > 2000) {
@@ -174,11 +212,34 @@ export class Game {
 
         this.vfx.update(this.canvas.height - 100);
 
-        // Show button if player is dead (no more victory condition)
+        // Show buttons if player is dead (no more victory condition)
         if (this.character.isDead) {
+            if (this.restartBtn.style.display !== 'block') {
+                // Just died: Save total score for upgrading
+                this.totalScore += this.currentScore;
+                localStorage.setItem('wuxia_total_score', this.totalScore.toString());
+
+                // Save to Leaderboard (Top 20 with Date)
+                let leaderboard: {score: number, date: string}[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+                
+                // Migration check: if old data was number[], clear it or handle it
+                if (leaderboard.length > 0 && typeof leaderboard[0] === 'number') {
+                    leaderboard = [];
+                }
+
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                
+                leaderboard.push({ score: this.currentScore, date: dateStr });
+                leaderboard.sort((a, b) => b.score - a.score);
+                leaderboard = leaderboard.slice(0, 20);
+                localStorage.setItem('wuxia_leaderboard', JSON.stringify(leaderboard));
+            }
             this.restartBtn.style.display = 'block';
+            this.homeBtn.style.display = 'block';
         } else {
             this.restartBtn.style.display = 'none';
+            this.homeBtn.style.display = 'none';
         }
 
         this.draw();
@@ -200,11 +261,24 @@ export class Game {
         }
 
         const spawnX = this.character.torso.position.x + (isLeft ? -SPAWN.OFFSET_X : SPAWN.OFFSET_X);
+        const diffConfig = SPAWN.DIFFICULTY[this.difficulty];
         
+        let hpMult = diffConfig.hpMultiplier;
+        let dmgMult = diffConfig.damageMultiplier;
+
+        // Nightmare Scaling
+        if (this.difficulty === 'NIGHTMARE') {
+            const extraLayer = Math.floor(this.killsInSession / 5);
+            hpMult += extraLayer * 0.2;
+            dmgMult += extraLayer * 0.2;
+        }
+
         const enemy = new Character(spawnX, this.canvas.height - 200, this.physics.world, {
             primaryColor: COLORS.INDIGO,
             farColor: '#1E3A5F',
-            collisionGroup: this.enemyGroup
+            collisionGroup: this.enemyGroup,
+            maxHp: CHARACTER.MAX_HP * hpMult,
+            damageMultiplier: dmgMult
         });
 
         this.enemies.push(enemy);
@@ -215,10 +289,6 @@ export class Game {
     private processCharacterInput(rawInput: any, rawMouse: { x: number, y: number }, char: Character) {
         const input = { ...rawInput };
         const mouse = { ...rawMouse };
-
-        // MOUSE/MOVEMENT: No mirroring needed here anymore because the Character 
-        // will be physically flipped in the engine.
-
         return { input, mouse };
     }
 
@@ -239,16 +309,28 @@ export class Game {
         this.character.destroy();
         this.enemies.forEach(e => e.destroy());
 
+        this.currentScore = 0;
+        this.killsInSession = 0;
+
         // Spawn Player (Red)
         this.character = new Character(this.canvas.width / 2, this.canvas.height - 200, this.physics.world, {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
-            collisionGroup: this.playerGroup
+            collisionGroup: this.playerGroup,
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / 99)),
+            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / 99),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / 99),
+            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * 0.005,
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / 99)
         });
 
         this.enemies = [];
         this.ais = [];
         this.wasEnemiesFlipPressed = [];
+        
+        // Clear medicines
+        this.medicines.forEach(m => Matter.Composite.remove(this.physics.world, m));
+        this.medicines = [];
         
         this.spawnEnemy(); // Spawn immediately on restart
         this.lastSpawnTime = Date.now();
@@ -261,67 +343,154 @@ export class Game {
     private handleCollision(pair: Matter.Pair) {
         const { bodyA, bodyB } = pair;
 
-        // Check for Blade vs Body Part
-        const isBladeA = bodyA.label === 'blade';
-        const isBladeB = bodyB.label === 'blade';
+        // --- Medicine Pickup Logic ---
+        const isMedA = bodyA.label?.startsWith('medicine_');
+        const isMedB = bodyB.label?.startsWith('medicine_');
+        if (isMedA || isMedB) {
+            const med = isMedA ? bodyA : bodyB;
+            const other = isMedA ? bodyB : bodyA;
+            const char = this.getCharacterFromBody(other);
+            
+            if (char === this.character) { // Only player picks up
+                 const type = med.label === 'medicine_large' ? 'LARGE' : 'SMALL';
+                 const healAmount = char.maxHp * (type === 'LARGE' ? 0.6 : 0.3);
+                 char.hp = Math.min(char.maxHp, char.hp + healAmount);
+                 
+                 // Effect
+                 this.vfx.spawn(med.position.x, med.position.y, (med.render.fillStyle as string), 15, 2.0);
+                 
+                 // Remove
+                 Matter.Composite.remove(this.physics.world, med);
+                 this.medicines = this.medicines.filter(m => m !== med);
+            }
+            return;
+        }
 
-        if (!isBladeA && !isBladeB) return; // No blade involved
-        if (isBladeA && isBladeB) return;   // Sword clash (ignoring for HP)
+        const isSwordA = bodyA.label === 'blade' || bodyA.label === 'guard' || bodyA.label === 'handle' || (bodyA.parent && bodyA.parent.label === 'sword');
+        const isSwordB = bodyB.label === 'blade' || bodyB.label === 'guard' || bodyB.label === 'handle' || (bodyB.parent && bodyB.parent.label === 'sword');
 
-        const [blade, target] = isBladeA ? [bodyA, bodyB] : [bodyB, bodyA];
+        if (!isSwordA && !isSwordB) return; // No sword involved
+
+        // 1. Blade vs Blade (Sword Clash / 弹刀)
+        if (isSwordA && isSwordB) {
+            const parentA = bodyA.parent || bodyA;
+            const parentB = bodyB.parent || bodyB;
+            
+            const relVel = Vector.sub(parentA.velocity, parentB.velocity);
+            const speed = Vector.magnitude(relVel);
+            
+            if (speed > 0.2) {
+                const charA = this.getCharacterFromBody(parentA);
+                const charB = this.getCharacterFromBody(parentB);
+                
+                if (charA && charB) {
+                    const normal = pair.collision.normal;
+                    const recoil = COMBAT.CLASH.RECOIL_FORCE * speed;
+
+                    // Physical Force
+                    Matter.Body.applyForce(parentA, bodyA.position, Vector.mult(normal, -recoil * 1.5));
+                    Matter.Body.applyForce(charA.torso, charA.torso.position, Vector.mult(normal, -recoil * 0.4));
+
+                    Matter.Body.applyForce(parentB, bodyB.position, Vector.mult(normal, recoil * 1.5));
+                    Matter.Body.applyForce(charB.torso, charB.torso.position, Vector.mult(normal, recoil * 0.4));
+
+                    // Velocity Impulse
+                    const impulseMag = speed * 0.5;
+                    const impulseA = Vector.mult(normal, -impulseMag);
+                    const impulseB = Vector.mult(normal, impulseMag);
+                    
+                    Matter.Body.setVelocity(parentA, Vector.add(parentA.velocity, impulseA));
+                    Matter.Body.setVelocity(parentB, Vector.add(parentB.velocity, impulseB));
+                    Matter.Body.setVelocity(charA.torso, Vector.add(charA.torso.velocity, Vector.mult(impulseA, 0.5)));
+                    Matter.Body.setVelocity(charB.torso, Vector.add(charB.torso.velocity, Vector.mult(impulseB, 0.5)));
+
+                    charA.stunTimer = Math.max(charA.stunTimer, COMBAT.CLASH.STUN_FRAMES);
+                    charB.stunTimer = Math.max(charB.stunTimer, COMBAT.CLASH.STUN_FRAMES);
+
+                    // Sword Torque
+                    const torqueMag = speed * 0.8;
+                    parentA.torque -= normal.x > 0 ? torqueMag : -torqueMag;
+                    parentB.torque += normal.x > 0 ? torqueMag : -torqueMag;
+
+                    // Visual sparks
+                    const contact = pair.contacts[0]?.vertex;
+                    if (contact && speed > COMBAT.CLASH.SPARK_THRESHOLD) {
+                        this.vfx.spawn(contact.x, contact.y, COLORS.GOLD, COMBAT.CLASH.SPARK_COUNT, speed * 0.4);
+                    }
+                }
+            }
+            return;
+        }
+
+        const [blade, target] = isSwordA ? [bodyA, bodyB] : [bodyB, bodyA];
         
-        // Identify which character owns the target body
         const targetChar = this.getCharacterFromBody(target);
         const bladeChar = this.getCharacterFromBody(blade);
 
-        if (!targetChar || !bladeChar || targetChar === bladeChar) return; // Self-hit or invalid
+        if (!targetChar || !bladeChar || targetChar === bladeChar) return;
 
-        // Body part labels: 'head', 'torso', 'limb'
         if (['head', 'torso', 'limb'].includes(target.label)) {
-            // Calculate Damage
             const relVel = Vector.sub(blade.velocity, target.velocity);
             const speed = Vector.magnitude(relVel);
-
-            if (speed > COMBAT.VELOCITY_THRESHOLD) {
+            
+            const threshold = COMBAT.VELOCITY_THRESHOLD - bladeChar.thresholdModifier;
+            if (speed > threshold) {
                 const multiplier = COMBAT.PART_MULTIPLIERS[target.label as keyof typeof COMBAT.PART_MULTIPLIERS] || 1.0;
-                const damage = (speed - COMBAT.VELOCITY_THRESHOLD) * multiplier * COMBAT.DAMAGE_SCALE;
+                const damage = (speed - threshold) * multiplier * COMBAT.DAMAGE_SCALE * bladeChar.damageMultiplier;
                 
                 targetChar.takeDamage(damage);
                 targetChar.stunTimer = Math.min(30, Math.floor(damage * 1.5));
 
-                // Apply Force
                 const forceDir = Vector.normalise(Vector.sub(target.position, blade.position));
                 const forceMag = speed * 0.005 * multiplier;
                 Matter.Body.applyForce(target, target.position, Vector.mult(forceDir, forceMag));
 
-                // Blood VFX
                 const contact = pair.contacts[0]?.vertex;
                 if (contact) {
-                    const baseCount = Math.floor(damage * 3) + 10; // More blood
-                    // 1. Spatter on target
+                    const baseCount = Math.floor(damage * 3) + 10;
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 0.4, target);
-                    // 2. Spatter on blade
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, Math.floor(baseCount * 0.3), speed * 0.2, blade);
-                    // 3. Ambient splatter (flies and hits ground/other)
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 1.0);
                 }
-
-                console.log(`${target.label} hit! Speed: ${speed.toFixed(2)}, Damage: ${damage.toFixed(2)}`);
             }
         }
     }
 
+    private tryDropMedicine(x: number, y: number) {
+        const rand = Math.random();
+        let medConfig = null;
+
+        if (rand < MEDICINE.LARGE.chance) { // 5%
+            medConfig = MEDICINE.LARGE;
+        } else if (rand < MEDICINE.LARGE.chance + MEDICINE.SMALL.chance) { // 5% + 10% = 15% cumulative
+            medConfig = MEDICINE.SMALL;
+        }
+
+        if (medConfig) {
+            const medBody = Matter.Bodies.circle(x, y, MEDICINE.RADIUS, {
+                label: medConfig.label,
+                friction: 0.5,
+                frictionAir: 0.02,
+                restitution: 0.5,
+                collisionFilter: {
+                    group: 0, // No specific group
+                    mask: 1   // Only collide with Default Category (usually just the Ground)
+                },
+                render: { fillStyle: medConfig.color }
+            });
+            Matter.Composite.add(this.physics.world, medBody);
+            this.medicines.push(medBody);
+        }
+    }
+
     private getCharacterFromBody(body: Matter.Body): Character | null {
-        // Check Player
         if (this.character.composite.bodies.some(b => b === body || b.parts.includes(body))) return this.character;
         if (this.character.sword && (this.character.sword === body || this.character.sword.parts.includes(body))) return this.character;
 
-        // Check Enemies
         for (const enemy of this.enemies) {
             if (enemy.composite.bodies.some(b => b === body || b.parts.includes(body))) return enemy;
             if (enemy.sword && (enemy.sword === body || enemy.sword.parts.includes(body))) return enemy;
         }
-
         return null;
     }
 
@@ -332,20 +501,11 @@ export class Game {
         this.ctx.save();
         this.ctx.translate(-this.camera.x, -this.camera.y);
 
-        const facing = this.character.facingDir;
-        const charX = this.character.torso.position.x;
-
-        // Draw bodies - Only draw sub-parts for compound bodies to avoid "blob" hulls
         const allBodies = Matter.Composite.allBodies(this.physics.world);
         allBodies.forEach(body => {
             const partsToDraw = body.parts.length > 1 ? body.parts.slice(1) : [body];
-
             partsToDraw.forEach(part => {
                 this.ctx.save();
-
-                // The character's flip is now handled physically in the engine,
-                // so we don't need any ctx.scale transformation here.
-
                 this.ctx.beginPath();
                 const vertices = part.vertices;
                 this.ctx.moveTo(vertices[0].x, vertices[0].y);
@@ -353,66 +513,91 @@ export class Game {
                     this.ctx.lineTo(vertices[i].x, vertices[i].y);
                 }
                 this.ctx.closePath();
-
                 this.ctx.fillStyle = (part.render.fillStyle as string) || COLORS.GOLD;
                 this.ctx.fill();
-
                 this.ctx.strokeStyle = COLORS.GOLD;
                 this.ctx.lineWidth = 1;
                 this.ctx.stroke();
-
                 this.ctx.restore();
             });
         });
 
         this.vfx.draw(this.ctx);
-
         this.ctx.restore();
 
-        // ---------------------------------------------------------
-        // Overhead Health Bars
-        // ---------------------------------------------------------
         const barW = 60;
         const barH = 5;
 
         const drawOverheadBar = (char: Character, color: string) => {
             const headPos = char.head.position;
             const screenX = headPos.x - this.camera.x - barW / 2;
-            const screenY = headPos.y - this.camera.y - 45; // Above head
-
+            const screenY = headPos.y - this.camera.y - 45;
+            
+            // 1. Draw BG
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
             this.ctx.fillRect(screenX, screenY, barW, barH);
+            
+            // 2. Draw Fill
             this.ctx.fillStyle = color;
-            this.ctx.fillRect(screenX, screenY, barW * (char.hp / CHARACTER.MAX_HP), barH);
+            this.ctx.fillRect(screenX, screenY, barW * (char.hp / char.maxHp), barH);
+            
+            // 3. Draw Border
             this.ctx.strokeStyle = COLORS.GOLD;
             this.ctx.lineWidth = 1;
             this.ctx.strokeRect(screenX, screenY, barW, barH);
+
+            // 4. Draw Numeric Value (New)
+            this.ctx.fillStyle = COLORS.SILK;
+            this.ctx.font = 'bold 11px "EB Garamond", serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(`${Math.ceil(char.hp)} / ${Math.ceil(char.maxHp)}`, screenX + barW / 2, screenY - 5);
         };
 
-        // Draw for player
         drawOverheadBar(this.character, COLORS.VERMILION);
+        this.enemies.forEach(enemy => drawOverheadBar(enemy, COLORS.INDIGO));
 
-        // Draw for enemies
-        this.enemies.forEach(enemy => {
-            drawOverheadBar(enemy, COLORS.INDIGO);
-        });
-
-        // Death Text Overlay
         if (this.character.isDead) {
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            
             this.ctx.fillStyle = COLORS.GOLD;
             this.ctx.font = 'bold 84px "Cinzel", serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText('惜  败', this.canvas.width / 2, this.canvas.height / 2 - 20);
-            
             this.ctx.font = '600 28px "EB Garamond", serif';
             this.ctx.fillText('无 尽 之 战 ， 终 有 一 死', this.canvas.width / 2, this.canvas.height / 2 + 80);
             
-            // Reset text baseline for other renderings
+            this.ctx.fillStyle = COLORS.GOLD;
+            this.ctx.font = '24px "EB Garamond", serif';
+            this.ctx.shadowBlur = 15;
+            this.ctx.shadowColor = 'black';
+            this.ctx.fillText(`本局战绩: ${this.currentScore} 积分`, this.canvas.width / 2, this.canvas.height / 2 + 130);
+            this.ctx.fillText(`累积功力: ${this.totalScore} 积分`, this.canvas.width / 2, this.canvas.height / 2 + 170);
+            this.ctx.shadowBlur = 0;
+
             this.ctx.textBaseline = 'alphabetic';
         }
+
+        // Draw HUD Score
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.fillRect(20, 20, 200, 40);
+        this.ctx.strokeStyle = COLORS.GOLD;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(20, 20, 200, 40);
+        
+        this.ctx.fillStyle = COLORS.GOLD;
+        this.ctx.font = 'bold 20px "EB Garamond", serif';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`当前战绩: ${this.currentScore}`, 40, 47);
+
+        // Nightmare indicator
+        if (this.difficulty === 'NIGHTMARE') {
+            const currentLayer = Math.floor(this.killsInSession / 5) + 1;
+            this.ctx.fillStyle = COLORS.VERMILION;
+            this.ctx.font = 'bold 24px "Cinzel", serif';
+            this.ctx.fillText(`无 间 地 狱 : 第 ${currentLayer} 层`, 40, 85);
+        }
+
+        this.ctx.textAlign = 'center'; // Restore for other calls
     }
 }

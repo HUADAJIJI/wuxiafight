@@ -21,6 +21,8 @@ export const PHYSICS = {
   JOINT_DAMPING: 0.2,   // Increased damping
   PD_K: 0.05,
   PD_D: 0.02,           // Increased derivative gain for stability
+  TORSO_K: 0.8,         // Standard balance stiffness
+  TORSO_D: 0.15,        // Standard balance damping
 };
 
 export const CHARACTER = {
@@ -47,10 +49,57 @@ export const COMBAT = {
     head: 3.0,
     torso: 1.2,
     limb: 0.5,
+  },
+  CLASH: {
+    RECOIL_FORCE: 1.2,       // Significantly increased for strong feedback
+    SPARK_COUNT: 4,          // Reduced number of sparks
+    SPARK_THRESHOLD: 1.8,    // Sparks only spawn if relative speed is high
+    STUN_FRAMES: 15,         // Baseline stun frames
   }
 };
 
 export const SPAWN = {
-  INTERVAL_MS: 10000,
+  DIFFICULTY: {
+    EASY: {
+      interval: 30000,
+      hpMultiplier: 0.6,
+      damageMultiplier: 0.6,
+      scoreReward: 1
+    },
+    MEDIUM: {
+      interval: 20000,
+      hpMultiplier: 1.0,
+      damageMultiplier: 1.0,
+      scoreReward: 2
+    },
+    HARD: {
+      interval: 10000,
+      hpMultiplier: 2.0,
+      damageMultiplier: 2.0,
+      scoreReward: 5
+    },
+    NIGHTMARE: {
+      interval: 5000,
+      hpMultiplier: 3.0,
+      damageMultiplier: 3.0,
+      scoreReward: 10
+    }
+  },
   OFFSET_X: 1000, // spawn this far outside the camera view center
+};
+
+export const MEDICINE = {
+  SMALL: {
+    chance: 0.10, // 10%
+    healPercent: 0.3,
+    color: '#3B7A57', // Jade green
+    label: 'medicine_small'
+  },
+  LARGE: {
+    chance: 0.05, // 5%
+    healPercent: 0.6,
+    color: '#FFD700', // Gold
+    label: 'medicine_large'
+  },
+  RADIUS: 10
 };

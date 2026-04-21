@@ -13,6 +13,11 @@ export class AIController {
     private target: Character;
     private lastFlipTime: number = 0;
     
+    // AI Spacing Constants
+    private readonly PREFERRED_DIST_MIN = 130;
+    private readonly PREFERRED_DIST_MAX = 200;
+    private readonly CHASE_DIST = 220;
+    
     private state: AIState = AIState.NEUTRAL;
     private stateTimer: number = 0;
     private stateDuration: number = 2000; // ms
@@ -53,18 +58,39 @@ export class AIController {
             this.lastFlipTime = time;
         }
 
-        // Standard Chasing (if not striking)
-        if (this.state === AIState.NEUTRAL) {
-            if (dist > 120) {
+        // 2. Dynamic Spacing Logic
+        // AI will now try to maintain distance even during windups or neutral
+        const canMove = this.state === AIState.NEUTRAL || 
+                        this.state === AIState.WINDUP_CLEAVE || 
+                        this.state === AIState.WINDUP_THRUST;
+
+        if (canMove) {
+            if (dist > this.CHASE_DIST) {
+                // Too far, chase
                 if (dx > 0) inputs.right = true;
                 else inputs.left = true;
-            } else if (dist < 50) {
+            } else if (dist < this.PREFERRED_DIST_MIN) {
+                // Too close, back off
                 if (dx > 0) inputs.left = true;
                 else inputs.right = true;
+            } else if (dist > this.PREFERRED_DIST_MAX) {
+                // Slightly too far, nudge closer
+                if (dx > 0) inputs.right = true;
+                else inputs.left = true;
             }
         }
 
-        // 2. State Machine Transitions
+        // 3. Special Movement: Lunge during Strike (Thrust)
+        if (this.state === AIState.STRIKE_THRUST) {
+            if (dx > 0) inputs.right = true;
+            else inputs.left = true;
+        } else if (this.state === AIState.STRIKE_CLEAVE) {
+            // Step forward slightly during cleave
+            if (dx > 0) inputs.right = true;
+            else inputs.left = true;
+        }
+
+        // 4. State Machine Transitions
         if (this.stateTimer > this.stateDuration) {
             this.stateTimer = 0;
             this.transitionState();

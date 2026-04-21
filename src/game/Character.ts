@@ -6,6 +6,11 @@ export interface CharacterOptions {
     farColor: string;
     collisionGroup: number;
     facingDir?: number;
+    maxHp?: number;
+    damageMultiplier?: number;
+    stiffnessMultiplier?: number;
+    moveMultiplier?: number;
+    thresholdModifier?: number;
 }
 
 export class Character {
@@ -14,14 +19,20 @@ export class Character {
     public sword?: Matter.Body;
     public facingDir: number = 1; // 1 for Right, -1 for Left
     public hp: number;
+    public maxHp: number;
+    public damageMultiplier: number;
     public stunTimer: number = 0;
     public isDead: boolean = false;
+    public scoreCounted: boolean = false;
     public deathTime?: number;
     public limbs: { [key: string]: Matter.Body } = {};
     public constraints: Matter.Constraint[] = [];
     public handConstraint?: Matter.Constraint;
     public composite: Matter.Composite;
     private world: Matter.World;
+    public stiffnessMultiplier: number = 1.0;
+    public moveMultiplier: number = 1.0;
+    public thresholdModifier: number = 0;
 
     // Target angles for PD control
     public targetAngles: { [key: string]: number } = {
@@ -42,7 +53,12 @@ export class Character {
         this.world = world;
         this.options = options;
         this.facingDir = options.facingDir || 1;
-        this.hp = CHARACTER.MAX_HP;
+        this.maxHp = options.maxHp || CHARACTER.MAX_HP;
+        this.hp = this.maxHp;
+        this.damageMultiplier = options.damageMultiplier || 1.0;
+        this.stiffnessMultiplier = options.stiffnessMultiplier || 1.0;
+        this.moveMultiplier = options.moveMultiplier || 1.0;
+        this.thresholdModifier = options.thresholdModifier || 0;
         this.composite = Matter.Composite.create({ label: 'Character' });
 
         const group = options.collisionGroup;
@@ -53,7 +69,7 @@ export class Character {
         this.torso = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH, CHARACTER.TORSO_HEIGHT, {
             collisionFilter: { group },
             friction: PHYSICS.FRICTION,
-            frictionAir: PHYSICS.FRICTION_AIR,
+            frictionAir: PHYSICS.FRICTION_AIR / this.moveMultiplier, // Reduce air resistance as speed moves up
             render: { fillStyle: options.primaryColor },
             label: 'torso'
         });
@@ -140,7 +156,8 @@ export class Character {
         this.sword = Matter.Body.create({
             parts: [bladeBase, bladeTip, guard, handle],
             collisionFilter: { group },
-            mass: CHARACTER.YAODAO_MASS
+            mass: CHARACTER.YAODAO_MASS,
+            label: 'sword'
         });
         Matter.Body.setInertia(this.sword, 80000);
 
@@ -201,24 +218,39 @@ export class Character {
             }
 
             const baseTarget = Math.max(-1.2, Math.min(2.0, normalizedTarget));
-            this.targetAngles.r_shoulder += (baseTarget - this.targetAngles.r_shoulder) * 0.15;
-            this.targetAngles.r_elbow = -0.1;
+            
+            // Only update shoulder target and apply sword torque if NOT stunned
+            if (this.stunTimer <= 0) {
+                // Shenfa affects responsiveness
+                this.targetAngles.r_shoulder += (baseTarget - this.targetAngles.r_shoulder) * (0.2 * this.stiffnessMultiplier);
+                
+                this.targetAngles.r_elbow = -0.1;
 
-            let angleError = (targetAngle + Math.PI / 2) - this.sword.angle;
-            while (angleError > Math.PI) angleError -= Math.PI * 2;
-            while (angleError < -Math.PI) angleError += Math.PI * 2;
+                let angleError = (targetAngle + Math.PI / 2) - this.sword.angle;
+                while (angleError > Math.PI) angleError -= Math.PI * 2;
+                while (angleError < -Math.PI) angleError += Math.PI * 2;
 
-            this.sword.torque += Math.max(-1.2, Math.min(1.2, angleError * 0.6 - this.sword.angularVelocity * 0.15));
+                // Bili increases grip strength (torque limit)
+                const torqueLimit = 4.0 * this.damageMultiplier; 
+                this.sword.torque += Math.max(-torqueLimit, Math.min(torqueLimit, angleError * 1.5 - this.sword.angularVelocity * 0.25));
+            } else {
+                // When stunned, allow limbs to follow momentum more freely
+                this.targetAngles.r_shoulder += (baseTarget - this.targetAngles.r_shoulder) * 0.02; // Very slow drift
+            }
         }
 
         if (input.left || input.right) {
-            const time = Date.now() * 0.02; // Faster animation
+            // Animation speed scales with movement multiplier
+            const time = Date.now() * 0.01 * (1 + (this.moveMultiplier - 1) * 0.5);
             const walkSpeed = 0.8;
             this.targetAngles.l_hip = Math.sin(time) * walkSpeed;
             this.targetAngles.r_hip = -Math.sin(time) * walkSpeed;
             this.targetAngles.l_knee = Math.max(0, Math.sin(time + Math.PI / 2)) * walkSpeed;
             this.targetAngles.r_knee = Math.max(0, -Math.sin(time + Math.PI / 2)) * walkSpeed;
-            Matter.Body.applyForce(this.torso, this.torso.position, { x: input.right ? 0.004 : -0.004, y: 0 });
+            // Apply force at the leg level
+            const forcePos = { x: this.torso.position.x, y: this.torso.position.y + CHARACTER.TORSO_HEIGHT / 2 + 40 };
+            const runForce = 0.004 * this.moveMultiplier;
+            Matter.Body.applyForce(this.torso, forcePos, { x: input.right ? runForce : -runForce, y: 0 });
         } else {
             this.targetAngles.l_hip = 0.1; this.targetAngles.r_hip = -0.1;
             this.targetAngles.l_knee = 0.2; this.targetAngles.r_knee = -0.2;
@@ -226,20 +258,26 @@ export class Character {
 
         const bodies = Matter.Composite.allBodies(this.world).filter(b => !Matter.Composite.allBodies(this.composite).includes(b));
         if (input.jump && (Matter.Query.collides(this.limbs.l_lower_leg, bodies).length > 0 || Matter.Query.collides(this.limbs.r_lower_leg, bodies).length > 0)) {
-            Matter.Body.applyForce(this.torso, this.torso.position, { x: 0, y: -0.15 });
+            const jumpForce = 0.15 * this.moveMultiplier;
+            Matter.Body.applyForce(this.torso, this.torso.position, { x: 0, y: -jumpForce });
             this.targetAngles.l_hip = -0.5; this.targetAngles.r_hip = 0.5;
             this.targetAngles.l_knee = 1.5; this.targetAngles.r_knee = 1.5;
         }
 
-        this.torso.torque = Math.max(-0.8, Math.min(0.8, -this.torso.angle * 0.8 - this.torso.angularVelocity * 0.15));
+        // 1. Balance Control (Torso stabilization) - scale with moveMultiplier to keep upright
+        const angleErr = 0 - this.torso.angle;
+        // Increase balance force proportionally to movement power
+        const balanceK = PHYSICS.TORSO_K * this.moveMultiplier;
+        const balanceD = PHYSICS.TORSO_D * Math.sqrt(this.moveMultiplier);
+        this.torso.torque += angleErr * balanceK - this.torso.angularVelocity * balanceD;
     }
 
     private applyPDControl() {
         if (this.isDead) return; // Go completely limp when dead
 
         const isStunned = this.stunTimer > 0;
-        const stiffness = isStunned ? PHYSICS.PD_K * 0.5 : PHYSICS.PD_K;
-        const damping = isStunned ? PHYSICS.PD_D * 0.2 : PHYSICS.PD_D;
+        const stiffness = (isStunned ? PHYSICS.PD_K * 0.5 : PHYSICS.PD_K) * this.stiffnessMultiplier;
+        const damping = (isStunned ? PHYSICS.PD_D * 0.2 : PHYSICS.PD_D) * this.stiffnessMultiplier;
 
         this.constraints.forEach(c => {
             if (!c.label) return;
@@ -263,7 +301,9 @@ export class Character {
             velocity: { ...this.torso.velocity },
             angularVelocity: this.torso.angularVelocity,
             angle: this.torso.angle,
-            hp: this.hp
+            hp: this.hp,
+            maxHp: this.maxHp,
+            damageMultiplier: this.damageMultiplier
         };
     }
 
@@ -273,6 +313,8 @@ export class Character {
         Matter.Body.setAngle(this.torso, state.angle);
         Matter.Body.setAngularVelocity(this.torso, state.angularVelocity);
         this.hp = state.hp ?? this.hp;
+        this.maxHp = state.maxHp ?? this.maxHp;
+        this.damageMultiplier = state.damageMultiplier ?? this.damageMultiplier;
     }
 
     public takeDamage(amount: number) {
