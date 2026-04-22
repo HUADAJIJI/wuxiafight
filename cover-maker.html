@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Wuxia Duel - Cover Maker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=EB+Garamond:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #fff;
+            padding: 50px;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 80px;
+            align-items: center;
+        }
+        .intro {
+            text-align: center;
+            max-width: 800px;
+        }
+        .intro h1 {
+            color: #C5A059;
+            font-family: 'Cinzel', serif;
+        }
+        .cover-container {
+            position: relative;
+            background: radial-gradient(circle at center, #2c3e50 0%, #1a1a1a 100%);
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,1);
+            overflow: hidden;
+            border: 4px solid #C5A059;
+        }
+        /* Silk texture for display only - won't be in the exported canvas */
+        .cover-container::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: url('https://www.transparenttextures.com/patterns/silk.png');
+            opacity: 0.15;
+            pointer-events: none;
+        }
+        canvas {
+            display: block;
+        }
+        .size-label {
+            margin-bottom: 15px;
+            font-size: 24px;
+            color: #ccc;
+            font-weight: bold;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .btn-download {
+            padding: 12px 24px;
+            font-size: 18px;
+            background: #8E2323;
+            color: #F4EBD0;
+            border: 2px solid #C5A059;
+            cursor: pointer;
+            font-family: 'EB Garamond', serif;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .btn-download:hover {
+            background: #C5A059;
+            color: #1a1a1a;
+            transform: scale(1.05);
+        }
+        
+        #cover-1920 { width: 1920px; height: 1080px; }
+        #cover-800-1200 { width: 800px; height: 1200px; }
+        #cover-800-800 { width: 800px; height: 800px; }
+    </style>
+</head>
+<body>
+
+    <div class="intro">
+        <h1>Wuxia Duel - 封面导出器</h1>
+        <p>我已经将文字直接集成到了 Canvas 渲染中。点击下方的按钮即可直接下载对应尺寸的 PNG 图片。</p>
+    </div>
+
+    <!-- 1920 x 1080 -->
+    <div>
+        <div class="size-label">1920 x 1080 (Landscape Cover)</div>
+        <div class="cover-container" id="cover-1920">
+            <canvas width="1920" height="1080"></canvas>
+        </div>
+        <div class="controls">
+            <button class="btn-download" onclick="download('cover-1920', 'landscape_cover.png')">下载 1920x1080</button>
+        </div>
+    </div>
+
+    <!-- 800 x 1200 -->
+    <div>
+        <div class="size-label">800 x 1200 (Portrait Cover)</div>
+        <div class="cover-container" id="cover-800-1200">
+            <canvas width="800" height="1200"></canvas>
+        </div>
+        <div class="controls">
+            <button class="btn-download" onclick="download('cover-800-1200', 'portrait_cover.png')">下载 800x1200</button>
+        </div>
+    </div>
+
+    <!-- 800 x 800 -->
+    <div>
+        <div class="size-label">800 x 800 (Square Icon)</div>
+        <div class="cover-container" id="cover-800-800">
+            <canvas width="800" height="800"></canvas>
+        </div>
+        <div class="controls">
+            <button class="btn-download" onclick="download('cover-800-800', 'square_icon.png')">下载 800x800</button>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            VERMILION: '#8E2323', GOLD: '#C5A059', LACQUER: '#1A1A1A', 
+            JADE: '#2E5A44', SILK: '#F4EBD0', INDIGO: '#2E4C6D'
+        };
+
+        function drawCharacter(ctx, x, y, scale, color, facingRight, pose) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(facingRight ? scale : -scale, scale);
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.beginPath();
+            ctx.ellipse(0, 45, 40, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = color;
+            ctx.strokeStyle = COLORS.GOLD;
+            ctx.lineWidth = 1.5;
+
+            const drawRect = (cx, cy, w, h, angle) => {
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.rect(-w/2, -h/2, w, h);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            const drawCircle = (cx, cy, r) => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            };
+
+            let arm1Angle, arm2Angle, leg1Angle, leg2Angle, torsoAngle, swordAngle;
+            if (pose === 'attack') {
+                torsoAngle = 0.3;
+                leg1Angle = -0.5;
+                leg2Angle = 0.5;
+                arm1Angle = -1.5;
+                arm2Angle = 0.5;
+                swordAngle = -1.0;
+            } else {
+                torsoAngle = -0.2;
+                leg1Angle = -0.3;
+                leg2Angle = 0.6;
+                arm1Angle = -0.8;
+                arm2Angle = -0.2;
+                swordAngle = 0.2;
+            }
+
+            // Torso (30x60)
+            drawRect(0, 0, 30, 60, torsoAngle);
+            // Head (r=15)
+            const headX = Math.sin(torsoAngle) * 35;
+            const headY = -Math.cos(torsoAngle) * 35;
+            drawCircle(headX, headY, 15);
+            
+            // Back Leg (12x40)
+            drawRect(-15, 45, 12, 40, leg2Angle);
+            // Front Leg
+            drawRect(10, 45, 12, 40, leg1Angle);
+            
+            // Back Arm (10x35)
+            drawRect(-15, -10, 10, 35, arm2Angle);
+
+            // Sword
+            ctx.save();
+            const handX = Math.sin(arm1Angle) * 30;
+            const handY = -15 + Math.cos(arm1Angle) * 30;
+            ctx.translate(handX, handY);
+            ctx.rotate(swordAngle);
+            
+            // Blade
+            ctx.fillStyle = COLORS.SILK;
+            ctx.beginPath();
+            ctx.moveTo(-3, 10);
+            ctx.lineTo(-3, -70);
+            ctx.quadraticCurveTo(5, -80, 8, -70);
+            ctx.lineTo(3, 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            // Guard
+            ctx.fillStyle = COLORS.GOLD;
+            ctx.beginPath();
+            ctx.rect(-10, 10, 20, 5);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Handle
+            ctx.fillStyle = COLORS.LACQUER;
+            ctx.beginPath();
+            ctx.rect(-3, 15, 6, 15);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+
+            // Front Arm
+            ctx.fillStyle = color;
+            drawRect(15, -15, 10, 35, arm1Angle);
+
+            ctx.restore();
+        }
+
+        function renderScene(canvasId, type, scaleMult) {
+            const container = document.getElementById(canvasId);
+            const canvas = container.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Background
+            const grd = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, Math.max(w,h));
+            grd.addColorStop(0, '#2c3e50');
+            grd.addColorStop(1, '#1a1a1a');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, w, h);
+
+            const groundY = h - (type === 'portrait' ? (h * 0.15) : (h * 0.2));
+
+            // Ground Area
+            ctx.fillStyle = 'rgba(62, 39, 35, 0.8)';
+            ctx.fillRect(0, groundY, w, h - groundY);
+            ctx.strokeStyle = COLORS.GOLD;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(w, groundY);
+            ctx.stroke();
+
+            const scale = (type === 'portrait' ? 4.5 : 5.0) * scaleMult;
+            const spacing = type === 'portrait' ? 300 : 500;
+            
+            // Particles / Sparks (Background)
+            ctx.save();
+            ctx.translate(w/2, groundY - 50 * scale);
+            for(let i=0; i<30; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? COLORS.GOLD : COLORS.VERMILION;
+                ctx.globalAlpha = Math.random() * 0.8;
+                ctx.beginPath();
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 120 * scale;
+                ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist, Math.random() * 3 * scale, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // Draw Characters
+            drawCharacter(ctx, w/2 - spacing/2, groundY - 45 * scale, scale, COLORS.VERMILION, true, 'attack');
+            drawCharacter(ctx, w/2 + spacing/2, groundY - 45 * scale, scale, COLORS.INDIGO, false, 'defend');
+            
+            // Draw Title Text
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.fillStyle = COLORS.GOLD;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = 'rgba(197, 160, 89, 0.5)';
+            ctx.shadowOffsetX = 4;
+            ctx.shadowOffsetY = 4;
+
+            if (type === 'landscape') {
+                ctx.font = 'bold 200px "Cinzel"';
+                ctx.fillText('WUXIA DUEL', w/2, h * 0.25);
+                ctx.font = 'bold 45px "EB Garamond"';
+                ctx.fillStyle = COLORS.SILK;
+                ctx.letterSpacing = '10px';
+                ctx.fillText('PHYSICS RAGDOLL', w/2, h * 0.32);
+            } else if (type === 'portrait') {
+                ctx.font = 'bold 140px "Cinzel"';
+                ctx.fillText('WUXIA', w/2, h * 0.18);
+                ctx.fillText('DUEL', w/2, h * 0.32);
+                ctx.font = 'bold 35px "EB Garamond"';
+                ctx.fillStyle = COLORS.SILK;
+                ctx.fillText('PHYSICS RAGDOLL', w/2, h * 0.38);
+            } else { // square
+                ctx.font = 'bold 130px "Cinzel"';
+                ctx.fillText('WUXIA', w/2, h * 0.15);
+                ctx.fillText('DUEL', w/2, h * 0.32);
+                ctx.font = 'bold 30px "EB Garamond"';
+                ctx.fillStyle = COLORS.SILK;
+                ctx.fillText('PHYSICS RAGDOLL', w/2, h * 0.38);
+            }
+            ctx.restore();
+        }
+
+        function download(canvasId, filename) {
+            const canvas = document.getElementById(canvasId).querySelector('canvas');
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Wait for fonts to load
+        document.fonts.ready.then(() => {
+            renderScene('cover-1920', 'landscape', 1.1);
+            renderScene('cover-800-1200', 'portrait', 0.9);
+            renderScene('cover-800-800', 'square', 0.7);
+        });
+    </script>
+</body>
+</html>

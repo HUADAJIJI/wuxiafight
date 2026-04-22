@@ -38,6 +38,7 @@ export class Game {
     private killsInSession: number = 0;
     private medicines: Matter.Body[] = [];
     private lang: 'ZH' | 'EN';
+    private medicinePityCount: number = 0; // Pity counter for drops
 
     constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN') {
         this.difficulty = difficulty;
@@ -519,16 +520,23 @@ export class Game {
     }
 
     private tryDropMedicine(x: number, y: number) {
+        // Pseudo-random: increase chance by 10% for every consecutive miss
+        const pityBonus = this.medicinePityCount * 0.10;
         const rand = Math.random();
         let medConfig = null;
 
-        if (rand < MEDICINE.LARGE.chance) { // 5%
+        // Distribute pity bonus between large and small (30% to large, 70% to small)
+        const largeChance = MEDICINE.LARGE.chance + (pityBonus * 0.3);
+        const totalChance = (MEDICINE.LARGE.chance + MEDICINE.SMALL.chance) + pityBonus;
+
+        if (rand < largeChance) {
             medConfig = MEDICINE.LARGE;
-        } else if (rand < MEDICINE.LARGE.chance + MEDICINE.SMALL.chance) { // 5% + 10% = 15% cumulative
+        } else if (rand < totalChance) {
             medConfig = MEDICINE.SMALL;
         }
 
         if (medConfig) {
+            this.medicinePityCount = 0; // Reset on drop
             const medBody = Matter.Bodies.circle(x, y, MEDICINE.RADIUS, {
                 label: medConfig.label,
                 friction: 0.5,
@@ -542,6 +550,8 @@ export class Game {
             });
             Matter.Composite.add(this.physics.world, medBody);
             this.medicines.push(medBody);
+        } else {
+            this.medicinePityCount++; // Increment pity if no drop
         }
     }
 
