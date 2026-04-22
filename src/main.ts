@@ -1,5 +1,6 @@
 import './style.css';
 import { Game } from './game/Game';
+import { getTranslation } from './game/Constants';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -7,7 +8,12 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 const DEFAULT_ATTRS = { bili: 1, shenfa: 1, gengu: 1, neigong: 1 };
 let attributes = JSON.parse(localStorage.getItem('wuxia_attributes') || JSON.stringify(DEFAULT_ATTRS));
 let totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
-let leaderboard: number[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+let leaderboard: any[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'ZH';
+
+function t(key: any, params: any = {}) {
+    return getTranslation(currentLang, key, params);
+}
 
 function saveGame() {
     localStorage.setItem('wuxia_attributes', JSON.stringify(attributes));
@@ -24,56 +30,58 @@ function renderUI() {
     leaderboard = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 
     app.innerHTML = `
+      <button id="lang-switch" class="lang-btn">${t('LANG_BTN')}</button>
+
       <div class="ui-overlay" id="main-title">
-        <h1>武 侠 决</h1>
-        <div class="controls-hint">AD 键：平移 | 空格：纵跃 | S 键：转向 | 鼠标：挥剑 | ESC：暂停</div>
+        <h1>${t('TITLE')}</h1>
+        <div class="controls-hint">${t('HINT')}</div>
       </div>
       
       <div class="difficulty-overlay" id="start-menu">
         <div class="main-container">
             <!-- 1. 最左侧：江湖龙虎榜 -->
             <div class="menu-content leaderboard-panel">
-                <h2>江湖龙虎榜</h2>
+                <h2>${t('LEADERBOARD')}</h2>
                 <div class="leaderboard-list">
                     ${leaderboard.length > 0 ? 
                         leaderboard.map((entry: any, i) => `
                             <div class="leader-row ${i < 3 ? 'top-three' : ''}">
                                 <div class="leader-main">
                                     <span class="rank">#${i + 1}</span>
-                                    <span class="score">${entry.score} 积分</span>
+                                    <span class="score">${entry.score} ${t('SCORE_UNIT')}</span>
                                 </div>
                                 <span class="date">${entry.date}</span>
                             </div>
                         `).join('') : 
-                        '<div class="empty-hint">暂无江湖传闻</div>'
+                        `<div class="empty-hint">${t('EMPTY_LEADERBOARD')}</div>`
                     }
                 </div>
             </div>
 
             <!-- 2. 中间：境界选择 -->
             <div class="menu-content center-panel">
-                <h2>选择感悟境界</h2>
-                <div class="total-score-display">累积功力: ${totalScore} 积分</div>
+                <h2>${t('CHOOSE_REALM')}</h2>
+                <div class="total-score-display">${t('TOTAL_POWER')}: ${totalScore} ${t('SCORE_UNIT')}</div>
                 <div class="difficulty-options">
-                    <button data-diff="EASY">闻鸡起舞 <small>(简单 - 30s刷新)</small></button>
-                    <button data-diff="MEDIUM">初窥门径 <small>(中等 - 20s刷新)</small></button>
-                    <button data-diff="HARD">登峰造极 <small>(困难 - 10s刷新)</small></button>
+                    <button data-diff="EASY">${t('DIFF_EASY')} <small>(${t('DIFF_EASY_DESC')})</small></button>
+                    <button data-diff="MEDIUM">${t('DIFF_MEDIUM')} <small>(${t('DIFF_MEDIUM_DESC')})</small></button>
+                    <button data-diff="HARD">${t('DIFF_HARD')} <small>(${t('DIFF_HARD_DESC')})</small></button>
                     <button data-diff="NIGHTMARE" style="color: var(--color-vermilion); border-color: var(--color-vermilion);">
-                        无间地狱 <small>(噩梦 - 5s刷新，无限增强)</small>
+                        ${t('DIFF_NIGHTMARE')} <small>(${t('DIFF_NIGHTMARE_DESC')})</small>
                     </button>
                 </div>
             </div>
 
             <!-- 3. 右侧：修为养成 -->
             <div class="menu-content right-panel attribute-panel">
-                <h2>修为养成</h2>
+                <h2>${t('CULTIVATION')}</h2>
                 <div class="attr-list">
-                    ${renderAttrRow('臂力 (攻击/稳)', 'bili', attributes.bili)}
-                    ${renderAttrRow('身法 (敏捷/速)', 'shenfa', attributes.shenfa)}
-                    ${renderAttrRow('根骨 (血量/定)', 'gengu', attributes.gengu)}
-                    ${renderAttrRow('内功 (破招/威)', 'neigong', attributes.neigong)}
+                    ${renderAttrRow(t('ATTR_BILI'), 'bili', attributes.bili)}
+                    ${renderAttrRow(t('ATTR_SHENFA'), 'shenfa', attributes.shenfa)}
+                    ${renderAttrRow(t('ATTR_GENGU'), 'gengu', attributes.gengu)}
+                    ${renderAttrRow(t('ATTR_NEIGONG'), 'neigong', attributes.neigong)}
                 </div>
-                <div class="attr-hint">精微增长，厚积薄发</div>
+                <div class="attr-hint">${t('HINT_FOOTER')}</div>
             </div>
         </div>
       </div>
@@ -89,10 +97,10 @@ function renderAttrRow(name: string, key: string, level: number) {
         <div class="attr-row">
             <div class="attr-info">
                 <span class="attr-name">${name}</span>
-                <span class="attr-level">境界: ${level} 阶</span>
+                <span class="attr-level">${t('REALM')}: ${level} ${t('LEVEL')}</span>
             </div>
             <button class="upgrade-btn ${canAfford ? '' : 'disabled'}" data-attr="${key}" ${canAfford ? '' : 'disabled'}>
-                ${level >= 100 ? '已满级' : `精进 (${cost})`}
+                ${level >= 100 ? t('MAX_LEVEL') : `${t('UPGRADE')} (${cost})`}
             </button>
         </div>
     `;
@@ -101,12 +109,22 @@ function renderAttrRow(name: string, key: string, level: number) {
 function setupEventListeners() {
     const startMenu = document.getElementById('start-menu')!;
     
+    // 语言切换
+    const langBtn = document.getElementById('lang-switch');
+    if (langBtn) {
+        langBtn.onclick = () => {
+            currentLang = currentLang === 'ZH' ? 'EN' : 'ZH';
+            localStorage.setItem('wuxia_lang', currentLang);
+            renderUI();
+        };
+    }
+
     // 难度选择
     startMenu.querySelectorAll('.difficulty-options button').forEach(btn => {
         (btn as HTMLButtonElement).onclick = () => {
             const diff = btn.getAttribute('data-diff') as any;
             startMenu.style.display = 'none';
-            new Game('app', diff, attributes);
+            new Game('app', diff, attributes, currentLang);
         };
     });
 

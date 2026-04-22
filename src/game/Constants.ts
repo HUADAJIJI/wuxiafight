@@ -103,3 +103,90 @@ export const MEDICINE = {
   },
   RADIUS: 10
 };
+
+export const TRANSLATIONS = {
+  ZH: {
+    TITLE: "武 侠 决",
+    HINT: "AD 键：平移 | 空格：纵跃 | S 键：转向 | 鼠标：挥剑 | ESC：暂停",
+    LEADERBOARD: "江湖龙虎榜",
+    EMPTY_LEADERBOARD: "暂无江湖传闻",
+    SCORE_UNIT: "积分",
+    CHOOSE_REALM: "选择感悟境界",
+    TOTAL_POWER: "累积功力",
+    CULTIVATION: "修为养成",
+    ATTR_BILI: "臂力 (攻击/稳)",
+    ATTR_SHENFA: "身法 (敏捷/速)",
+    ATTR_GENGU: "根骨 (血量/定)",
+    ATTR_NEIGONG: "内功 (破招/威)",
+    LEVEL: "阶",
+    REALM: "境界",
+    UPGRADE: "精进",
+    MAX_LEVEL: "已满级",
+    HINT_FOOTER: "精微增长，厚积薄发",
+    DIFF_EASY: "闻鸡起舞",
+    DIFF_MEDIUM: "初窥门径",
+    DIFF_HARD: "登峰造极",
+    DIFF_NIGHTMARE: "无间地狱",
+    DIFF_EASY_DESC: "简单 - 30s刷新",
+    DIFF_MEDIUM_DESC: "中等 - 20s刷新",
+    DIFF_HARD_DESC: "困难 - 10s刷新",
+    DIFF_NIGHTMARE_DESC: "噩梦 - 5s刷新，无限增强",
+    LANG_BTN: "English",
+    RETRY_BTN: "再战一回",
+    HOME_BTN: "归隐山林",
+    PAUSE_TITLE: "战 局 中 止",
+    RESUME_BTN: "连 续 战 斗",
+    QUIT_BTN: "退 出 战 局",
+    DEFEAT_TITLE: "惜  败",
+    DEFEAT_SUB: "无 尽 之 战 ， 终 有 一 死",
+    SESSION_SCORE: "本局战绩",
+    CURRENT_SCORE: "当前战绩",
+    HELL_INDICATOR: "无 间 地 狱 : 第 {layer} 层"
+  },
+  EN: {
+    TITLE: "WUXIA DUEL",
+    HINT: "AD: Move | Space: Jump | S: Flip | Mouse: Attack | ESC: Pause",
+    LEADERBOARD: "RANKINGS",
+    EMPTY_LEADERBOARD: "No legends yet",
+    SCORE_UNIT: "Pts",
+    CHOOSE_REALM: "SELECT REALM",
+    TOTAL_POWER: "Total Power",
+    CULTIVATION: "CULTIVATION",
+    ATTR_BILI: "STR (Atk/Stab)",
+    ATTR_SHENFA: "AGI (Spd/Dex)",
+    ATTR_GENGU: "VIT (HP/Def)",
+    ATTR_NEIGONG: "INT (Pwr/Crit)",
+    LEVEL: "Stage",
+    REALM: "Rank",
+    UPGRADE: "Train",
+    MAX_LEVEL: "Maxed",
+    HINT_FOOTER: "Constant growth leads to mastery",
+    DIFF_EASY: "Beginner",
+    DIFF_MEDIUM: "Apprentice",
+    DIFF_HARD: "Master",
+    DIFF_NIGHTMARE: "Hell Mode",
+    DIFF_EASY_DESC: "Easy - 30s spawn",
+    DIFF_MEDIUM_DESC: "Med - 20s spawn",
+    DIFF_HARD_DESC: "Hard - 10s spawn",
+    DIFF_NIGHTMARE_DESC: "Nightmare - 5s spawn",
+    LANG_BTN: "中文",
+    RETRY_BTN: "Fight Again",
+    HOME_BTN: "Retire",
+    PAUSE_TITLE: "GAME PAUSED",
+    RESUME_BTN: "RESUME",
+    QUIT_BTN: "QUIT",
+    DEFEAT_TITLE: "DEFEAT",
+    DEFEAT_SUB: "In the endless war, death is inevitable.",
+    SESSION_SCORE: "Session Score",
+    CURRENT_SCORE: "Current Score",
+    HELL_INDICATOR: "HELL MODE: LAYER {layer}"
+  }
+};
+
+export function getTranslation(lang: 'ZH' | 'EN', key: keyof typeof TRANSLATIONS.ZH, params: any = {}) {
+  let text = TRANSLATIONS[lang][key];
+  for (const p in params) {
+    text = text.replace(`{${p}}`, params[p]);
+  }
+  return text;
+}

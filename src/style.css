@@ -10,6 +10,28 @@
   --font-body: 'EB Garamond', serif;
 }
 
+.lang-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(26, 26, 26, 0.8);
+  color: var(--color-gold);
+  border: 1px solid var(--color-gold);
+  padding: 8px 16px;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  cursor: pointer;
+  z-index: 1100;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+.lang-btn:hover {
+  background: var(--color-gold);
+  color: var(--color-lacquer);
+  transform: translateY(-2px);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -181,8 +203,10 @@ canvas {
   border: 1px solid var(--color-gold);
   padding: 1.2rem;
   font-family: var(--font-body);
-  font-size: 1.5rem;
-  width: 380px;
+  font-size: 1.4rem;
+  width: 100%;
+  max-width: 450px;
+  min-height: 85px;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
@@ -252,7 +276,7 @@ canvas {
 }
 
 .attribute-panel {
-  min-width: 450px;
+  min-width: 480px;
 }
 
 .attr-list {
@@ -299,7 +323,7 @@ canvas {
   font-size: 1rem !important;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 120px;
+  min-width: 140px;
 }
 
 .upgrade-btn:hover:not(.disabled) {

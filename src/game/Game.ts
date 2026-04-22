@@ -1,7 +1,7 @@
 import { PhysicsEngine } from './PhysicsEngine';
 import { Character } from './Character';
 import { AIController } from './AIController';
-import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE } from './Constants';
+import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE, getTranslation } from './Constants';
 import { ParticleSystem } from './VisualEffects';
 import Matter from 'matter-js';
 import { Vector } from 'matter-js';
@@ -36,10 +36,12 @@ export class Game {
     private totalScore: number = 0;
     private killsInSession: number = 0;
     private medicines: Matter.Body[] = [];
+    private lang: 'ZH' | 'EN';
 
-    constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any) {
+    constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN') {
         this.difficulty = difficulty;
         this.attributes = attributes;
+        this.lang = lang;
         this.canvas = document.createElement('canvas');
         const container = document.getElementById(containerId);
         if (container) {
@@ -54,14 +56,14 @@ export class Game {
         // Create Restart Button
         this.restartBtn = document.createElement('button');
         this.restartBtn.className = 'restart-btn';
-        this.restartBtn.innerText = '再战一回';
+        this.restartBtn.innerText = this.t('RETRY_BTN');
         if (container) container.appendChild(this.restartBtn);
         this.restartBtn.onclick = () => this.restart();
 
         // Create Home Button
         this.homeBtn = document.createElement('button');
         this.homeBtn.className = 'home-btn';
-        this.homeBtn.innerText = '归隐山林';
+        this.homeBtn.innerText = this.t('HOME_BTN');
         if (container) container.appendChild(this.homeBtn);
         this.homeBtn.onclick = () => location.reload();
 
@@ -70,10 +72,10 @@ export class Game {
         this.pauseOverlay.className = 'pause-overlay';
         this.pauseOverlay.innerHTML = `
             <div class="pause-content">
-                <h2>战 局 中 止</h2>
+                <h2>${this.t('PAUSE_TITLE')}</h2>
                 <div class="pause-actions">
-                    <button id="resume-btn">连 续 战 斗</button>
-                    <button id="pause-home-btn">退 出 战 局</button>
+                    <button id="resume-btn">${this.t('RESUME_BTN')}</button>
+                    <button id="pause-home-btn">${this.t('QUIT_BTN')}</button>
                 </div>
             </div>
         `;
@@ -121,6 +123,10 @@ export class Game {
         this.lastTick = Date.now();
         this.physics.start();
         this.loop();
+    }
+
+    private t(key: any, params: any = {}) {
+        return getTranslation(this.lang, key, params);
     }
 
     private setupInputs() {
@@ -609,16 +615,16 @@ export class Game {
             this.ctx.font = 'bold 84px "Cinzel", serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText('惜  败', this.canvas.width / 2, this.canvas.height / 2 - 20);
+            this.ctx.fillText(this.t('DEFEAT_TITLE'), this.canvas.width / 2, this.canvas.height / 2 - 20);
             this.ctx.font = '600 28px "EB Garamond", serif';
-            this.ctx.fillText('无 尽 之 战 ， 终 有 一 死', this.canvas.width / 2, this.canvas.height / 2 + 80);
+            this.ctx.fillText(this.t('DEFEAT_SUB'), this.canvas.width / 2, this.canvas.height / 2 + 80);
             
             this.ctx.fillStyle = COLORS.GOLD;
             this.ctx.font = '24px "EB Garamond", serif';
             this.ctx.shadowBlur = 15;
             this.ctx.shadowColor = 'black';
-            this.ctx.fillText(`本局战绩: ${this.currentScore} 积分`, this.canvas.width / 2, this.canvas.height / 2 + 130);
-            this.ctx.fillText(`累积功力: ${this.totalScore} 积分`, this.canvas.width / 2, this.canvas.height / 2 + 170);
+            this.ctx.fillText(`${this.t('SESSION_SCORE')}: ${this.currentScore} ${this.t('SCORE_UNIT')}`, this.canvas.width / 2, this.canvas.height / 2 + 130);
+            this.ctx.fillText(`${this.t('TOTAL_POWER')}: ${this.totalScore} ${this.t('SCORE_UNIT')}`, this.canvas.width / 2, this.canvas.height / 2 + 170);
             this.ctx.shadowBlur = 0;
 
             this.ctx.textBaseline = 'alphabetic';
@@ -634,14 +640,14 @@ export class Game {
         this.ctx.fillStyle = COLORS.GOLD;
         this.ctx.font = 'bold 20px "EB Garamond", serif';
         this.ctx.textAlign = 'left';
-        this.ctx.fillText(`当前战绩: ${this.currentScore}`, 40, 47);
+        this.ctx.fillText(`${this.t('CURRENT_SCORE')}: ${this.currentScore}`, 40, 47);
 
         // Nightmare indicator
         if (this.difficulty === 'NIGHTMARE') {
             const currentLayer = Math.floor(this.killsInSession / 5) + 1;
             this.ctx.fillStyle = COLORS.VERMILION;
             this.ctx.font = 'bold 24px "Cinzel", serif';
-            this.ctx.fillText(`无 间 地 狱 : 第 ${currentLayer} 层`, 40, 85);
+            this.ctx.fillText(this.t('HELL_INDICATOR', { layer: currentLayer }), 40, 85);
         }
 
         this.ctx.textAlign = 'center'; // Restore for other calls
