@@ -161,7 +161,7 @@ export class Character {
             mass: CHARACTER.YAODAO_MASS,
             label: 'sword'
         });
-        Matter.Body.setInertia(this.sword, 80000);
+        Matter.Body.setInertia(this.sword, CHARACTER.YAODAO_INERTIA);
 
         this.handConstraint = Matter.Constraint.create({
             bodyA: this.limbs.r_lower_arm,
@@ -234,7 +234,7 @@ export class Character {
 
                 // Bili increases grip strength (torque limit)
                 const torqueLimit = 4.0 * this.damageMultiplier; 
-                this.sword.torque += Math.max(-torqueLimit, Math.min(torqueLimit, angleError * 1.5 - this.sword.angularVelocity * 0.25));
+                this.sword.torque += Math.max(-torqueLimit, Math.min(torqueLimit, angleError * PHYSICS.SWORD_STIFFNESS - this.sword.angularVelocity * PHYSICS.SWORD_DAMPING));
             } else {
                 // When stunned, allow limbs to follow momentum more freely
                 this.targetAngles.r_shoulder += (baseTarget - this.targetAngles.r_shoulder) * 0.02; // Very slow drift

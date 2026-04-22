@@ -553,7 +553,8 @@ export class Game {
             const threshold = COMBAT.VELOCITY_THRESHOLD - bladeChar.thresholdModifier;
             if (speed > threshold) {
                 const multiplier = COMBAT.PART_MULTIPLIERS[target.label as keyof typeof COMBAT.PART_MULTIPLIERS] || 1.0;
-                const damage = (speed - threshold) * multiplier * COMBAT.DAMAGE_SCALE * bladeChar.damageMultiplier;
+                const inertiaScale = (bladeChar.sword?.inertia || COMBAT.REFERENCE_INERTIA) / COMBAT.REFERENCE_INERTIA;
+                const damage = (speed - threshold) * multiplier * COMBAT.DAMAGE_SCALE * bladeChar.damageMultiplier * inertiaScale;
                 
                 targetChar.takeDamage(damage, this.gameTime);
                 targetChar.stunTimer = Math.min(30, Math.floor(damage * 1.5));

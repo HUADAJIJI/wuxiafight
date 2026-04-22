@@ -23,6 +23,8 @@ export const PHYSICS = {
   PD_D: 0.02,           // Increased derivative gain for stability
   TORSO_K: 0.8,         // Standard balance stiffness
   TORSO_D: 0.15,        // Standard balance damping
+  SWORD_STIFFNESS: 1.5,
+  SWORD_DAMPING: 0.5,   // Increased from 0.25 to prevent jitter
 };
 
 export const CHARACTER = {
@@ -39,6 +41,7 @@ export const CHARACTER = {
   SWORD_HILT_HEIGHT: 5,
   YAODAO_CURVE: 15, // Degrees/offset for blade curve
   YAODAO_MASS: 1.5,   // Reduced to prevent tipping character over
+  YAODAO_INERTIA: 30000, // Reduced from 80000 for better responsiveness
   MAX_HP: 100,
   MAX_ATTR_LEVEL: 30,
 };
@@ -46,6 +49,7 @@ export const CHARACTER = {
 export const COMBAT = {
   VELOCITY_THRESHOLD: 1.5,   // Minimum relative velocity for damage
   DAMAGE_SCALE: 5.0,         // Overall damage multiplier
+  REFERENCE_INERTIA: 80000,  // Base inertia used for damage scaling
   PART_MULTIPLIERS: {
     head: 3.0,
     torso: 1.2,
