@@ -84,12 +84,14 @@ export class Character {
         // Visual Details
         const headband = Matter.Bodies.rectangle(x, y - CHARACTER.TORSO_HEIGHT / 2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS * 2.2, 4, {
             collisionFilter: { group },
-            render: { fillStyle: COLORS.LACQUER }
+            render: { fillStyle: COLORS.LACQUER },
+            label: 'head'
         });
         const sash = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH + 2, 8, {
             collisionFilter: { group },
             angle: Math.PI / 4,
-            render: { fillStyle: COLORS.GOLD }
+            render: { fillStyle: COLORS.GOLD },
+            label: 'torso'
         });
 
         // Limbs based on direction
