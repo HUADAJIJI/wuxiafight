@@ -23,6 +23,8 @@ export class Game {
     private homeBtn: HTMLButtonElement;
     private pauseOverlay: HTMLDivElement;
     private isPaused: boolean = false;
+    private gameTime: number = 0;
+    private lastTick: number = Date.now();
     private lastSpawnTime: number = 0;
     private wasFPressed = false; // DEBUG ONLY
     private playerGroup: number;
@@ -115,7 +117,8 @@ export class Game {
         
         // Start immediately since difficulty is already chosen
         this.spawnEnemy();
-        this.lastSpawnTime = Date.now();
+        this.lastSpawnTime = 0; // Use 0 for gameTime
+        this.lastTick = Date.now();
         this.physics.start();
         this.loop();
     }
@@ -151,12 +154,17 @@ export class Game {
     }
 
     private loop() {
+        const now = Date.now();
+        const dt = now - this.lastTick;
+        this.lastTick = now;
+
         if (!this.isPaused) {
-            const now = Date.now();
+            this.gameTime += dt;
+            
             const intervalMs = SPAWN.DIFFICULTY[this.difficulty].interval;
-            if (now - this.lastSpawnTime > intervalMs) {
+            if (this.gameTime - this.lastSpawnTime > intervalMs) {
                 this.spawnEnemy();
-                this.lastSpawnTime = now;
+                this.lastSpawnTime = this.gameTime;
             }
 
             // 1. Process player inputs (Only if alive)
@@ -174,7 +182,7 @@ export class Game {
                     this.ais.forEach((ai, i) => ai.updateReferences(this.enemies[i], this.character));
                 }
                 this.wasPlayerFlipPressed = playerInput.flip;
-                this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y });
+                this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y }, this.gameTime);
             }
 
             // --- DEBUG KEY BLOCK (F: Kill Random Enemy) ---
@@ -182,7 +190,7 @@ export class Game {
                 const aliveEnemies = this.enemies.filter(e => !e.isDead);
                 if (aliveEnemies.length > 0) {
                     const victim = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-                    victim.takeDamage(1000); // Fatal damage
+                    victim.takeDamage(1000, this.gameTime); // Fatal damage
                 }
             }
             this.wasFPressed = this.keys['KeyF'];
@@ -204,18 +212,18 @@ export class Game {
                     }
 
                     // Cleanup Sword for dead enemies after 2 seconds
-                    if (enemy.deathTime && enemy.sword) {
-                        if (now - enemy.deathTime > 2000) {
+                    if (enemy.deathTime !== undefined && enemy.sword) {
+                        if (this.gameTime - enemy.deathTime > 2000) {
                             Matter.Composite.remove(enemy.composite, enemy.sword);
                             enemy.sword = undefined;
                         }
                     }
-                    enemy.update({ left: false, right: false, jump: false, flip: false });
+                    enemy.update({ left: false, right: false, jump: false, flip: false }, undefined, this.gameTime);
                     return;
                 }
 
                 const ai = this.ais[i];
-                const aiRaw = ai.getInputs();
+                const aiRaw = ai.getInputs(this.gameTime);
                 const { input: eIn, mouse: eMouse } = this.processCharacterInput(aiRaw.inputs, aiRaw.mousePos, enemy);
 
                 // Handle Reconstruction Flip for AI
@@ -225,7 +233,7 @@ export class Game {
                     ai.updateReferences(newEnemy, this.character);
                 }
                 this.wasEnemiesFlipPressed[i] = eIn.flip;
-                this.enemies[i].update(eIn, eMouse);
+                this.enemies[i].update(eIn, eMouse, this.gameTime);
             });
 
             // Camera Follow Logic (Follow player only)
@@ -249,8 +257,8 @@ export class Game {
                         leaderboard = [];
                     }
 
-                    const now = new Date();
-                    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                    const nowTime = new Date();
+                    const dateStr = `${nowTime.getFullYear()}-${String(nowTime.getMonth() + 1).padStart(2, '0')}-${String(nowTime.getDate()).padStart(2, '0')} ${String(nowTime.getHours()).padStart(2, '0')}:${String(nowTime.getMinutes()).padStart(2, '0')}:${String(nowTime.getSeconds()).padStart(2, '0')}`;
                     
                     leaderboard.push({ score: this.currentScore, date: dateStr });
                     leaderboard.sort((a, b) => b.score - a.score);
@@ -275,6 +283,12 @@ export class Game {
 
         this.isPaused = !this.isPaused;
         this.physics.runner.enabled = !this.isPaused;
+        
+        // Reset lastTick when resuming to avoid a huge jump in gameTime
+        if (!this.isPaused) {
+            this.lastTick = Date.now();
+        }
+
         this.pauseOverlay.style.display = this.isPaused ? 'flex' : 'none';
     }
 
@@ -364,7 +378,8 @@ export class Game {
         this.medicines = [];
         
         this.spawnEnemy(); // Spawn immediately on restart
-        this.lastSpawnTime = Date.now();
+        this.lastSpawnTime = this.gameTime;
+        this.lastTick = Date.now();
 
         this.restartBtn.style.display = 'none';
         
@@ -469,7 +484,7 @@ export class Game {
                 const multiplier = COMBAT.PART_MULTIPLIERS[target.label as keyof typeof COMBAT.PART_MULTIPLIERS] || 1.0;
                 const damage = (speed - threshold) * multiplier * COMBAT.DAMAGE_SCALE * bladeChar.damageMultiplier;
                 
-                targetChar.takeDamage(damage);
+                targetChar.takeDamage(damage, this.gameTime);
                 targetChar.stunTimer = Math.min(30, Math.floor(damage * 1.5));
 
                 const forceDir = Vector.normalise(Vector.sub(target.position, blade.position));

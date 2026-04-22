@@ -34,10 +34,10 @@ export class AIController {
         this.target = target;
     }
 
-    public getInputs() {
+    public getInputs(gameTime: number = Date.now()) {
         const sourcePos = this.source.torso.position;
         const targetPos = this.target.torso.position;
-        const time = Date.now();
+        const time = gameTime;
         const delta = 16; 
         
         this.stateTimer += delta;

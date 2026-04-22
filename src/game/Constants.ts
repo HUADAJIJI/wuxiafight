@@ -90,13 +90,13 @@ export const SPAWN = {
 
 export const MEDICINE = {
   SMALL: {
-    chance: 0.10, // 10%
+    chance: 0.15, // 15%
     healPercent: 0.3,
     color: '#3B7A57', // Jade green
     label: 'medicine_small'
   },
   LARGE: {
-    chance: 0.05, // 5%
+    chance: 0.08, // 8%
     healPercent: 0.6,
     color: '#FFD700', // Gold
     label: 'medicine_large'

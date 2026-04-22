@@ -26,7 +26,7 @@ function renderUI() {
     app.innerHTML = `
       <div class="ui-overlay" id="main-title">
         <h1>武 侠 决</h1>
-        <div class="controls-hint">AD 键：平移 | 空格：纵跃 | S 键：转向</div>
+        <div class="controls-hint">AD 键：平移 | 空格：纵跃 | S 键：转向 | 鼠标：挥剑 | ESC：暂停</div>
       </div>
       
       <div class="difficulty-overlay" id="start-menu">

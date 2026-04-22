@@ -195,7 +195,7 @@ export class Character {
         this.constraints.push(constraint);
     }
 
-    public update(input: { left: boolean, right: boolean, jump: boolean, flip: boolean }, mousePos?: { x: number, y: number }) {
+    public update(input: { left: boolean, right: boolean, jump: boolean, flip: boolean }, mousePos?: { x: number, y: number }, gameTime: number = Date.now()) {
         if (this.isDead) {
             // Even if dead, we should still call applyPDControl to handle the "limp" state decay 
             // if we were applying any stiffness, but here we just return early to prevent movement.
@@ -241,7 +241,7 @@ export class Character {
 
         if (input.left || input.right) {
             // Animation speed scales with movement multiplier
-            const time = Date.now() * 0.01 * (1 + (this.moveMultiplier - 1) * 0.5);
+            const time = gameTime * 0.01 * (1 + (this.moveMultiplier - 1) * 0.5);
             const walkSpeed = 0.8;
             this.targetAngles.l_hip = Math.sin(time) * walkSpeed;
             this.targetAngles.r_hip = -Math.sin(time) * walkSpeed;
@@ -317,12 +317,12 @@ export class Character {
         this.damageMultiplier = state.damageMultiplier ?? this.damageMultiplier;
     }
 
-    public takeDamage(amount: number) {
+    public takeDamage(amount: number, gameTime: number = Date.now()) {
         if (this.isDead) return;
         this.hp = Math.max(0, this.hp - amount);
         if (this.hp <= 0) {
             this.isDead = true;
-            this.deathTime = Date.now();
+            this.deathTime = gameTime;
             if (this.handConstraint) {
                 Matter.Composite.remove(this.composite, this.handConstraint);
                 this.handConstraint = undefined;
