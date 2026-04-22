@@ -1,6 +1,7 @@
 import './style.css';
 import { Game } from './game/Game';
 import { getTranslation, CHARACTER } from './game/Constants';
+import { BackgroundManager } from './game/Background';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.classList.add('menu-mode');
@@ -15,6 +16,43 @@ Object.keys(attributes).forEach(key => {
 let totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
 let leaderboard: any[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'EN';
+
+// --- 主菜单动态背景 ---
+const bgCanvas = document.createElement('canvas');
+bgCanvas.width = 1280;
+bgCanvas.height = 720;
+bgCanvas.style.position = 'absolute';
+bgCanvas.style.top = '0';
+bgCanvas.style.left = '0';
+bgCanvas.style.zIndex = '0';
+app.appendChild(bgCanvas);
+
+// 创建一个专门存放 UI 的容器，防止 renderUI 清空背景
+const uiRoot = document.createElement('div');
+uiRoot.id = 'ui-root';
+uiRoot.style.position = 'relative';
+uiRoot.style.zIndex = '10';
+uiRoot.style.width = '100%';
+uiRoot.style.height = '100%';
+app.appendChild(uiRoot);
+
+const bgCtx = bgCanvas.getContext('2d')!;
+const bgManager = new BackgroundManager(bgCanvas, bgCtx);
+let menuAnimationId: number;
+let menuCameraX = 0;
+
+function drawMenuBackground() {
+    // 摄像机缓慢右移，营造电影般的摇摄镜头
+    menuCameraX += 0.8;
+    
+    bgManager.draw(menuCameraX);
+    bgManager.drawForeground(menuCameraX, []); // 菜单中没有人物
+    bgManager.drawOverlay();
+
+    menuAnimationId = requestAnimationFrame(drawMenuBackground);
+}
+// 启动主菜单背景动画
+drawMenuBackground();
 
 function t(key: any, params: any = {}) {
     return getTranslation(currentLang, key, params);
@@ -36,14 +74,14 @@ function renderUI() {
     totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
     leaderboard = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 
-    app.innerHTML = `
+    uiRoot.innerHTML = `
       <div class="ui-overlay" id="main-title">
-        <h1>${t('TITLE')}</h1>
         <div class="controls-hint">${t('HINT')}</div>
         <div id="hell-indicator-overlay" class="hell-indicator-overlay"></div>
       </div>
 
       <div class="difficulty-overlay" id="start-menu">
+        <h1 class="menu-header-title">${t('TITLE')}</h1>
         <button id="lang-switch" class="lang-btn">${t('LANG_BTN')}</button>
         
         <div class="main-container">
@@ -133,6 +171,21 @@ function setupEventListeners() {
             const diff = btn.getAttribute('data-diff') as any;
             startMenu.style.display = 'none';
             app.classList.remove('menu-mode');
+            
+            // 停止菜单的背景动画，并移除背景 Canvas
+            cancelAnimationFrame(menuAnimationId);
+            if (bgCanvas.parentNode) {
+                bgCanvas.parentNode.removeChild(bgCanvas);
+            }
+            
+            // 降低 UI 层的层级，并关闭鼠标穿透，确保不遮挡游戏画布
+            uiRoot.style.zIndex = '5';
+            uiRoot.style.pointerEvents = 'none';
+            
+            // 显示操作提示
+            const mainTitle = document.getElementById('main-title');
+            if (mainTitle) mainTitle.style.display = 'block';
+            
             new Game('app', diff, attributes, currentLang);
         };
     });

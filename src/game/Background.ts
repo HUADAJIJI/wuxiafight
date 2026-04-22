@@ -1,4 +1,3 @@
-import { COLORS } from './Constants';
 import { audioManager } from './Audio';
 
 interface LayerOptions {
@@ -26,8 +25,6 @@ class ParallaxLayer {
 
     private generatePoints() {
         const segments = 100;
-        const step = this.width / segments;
-        
         // Start and end at same height for seamless looping
         const startHeight = Math.random() * this.options.amplitude;
         
@@ -49,12 +46,10 @@ class ParallaxLayer {
         ctx.globalAlpha = this.options.opacity;
         ctx.fillStyle = this.options.color;
 
-        // Draw twice for seamless looping
+        // Draw three sets for seamless looping regardless of scroll direction
+        this.drawShape(ctx, scrollX - this.width, canvasHeight);
         this.drawShape(ctx, scrollX, canvasHeight);
         this.drawShape(ctx, scrollX + this.width, canvasHeight);
-        if (scrollX > 0) {
-            this.drawShape(ctx, scrollX - this.width, canvasHeight);
-        }
 
         ctx.restore();
     }
@@ -71,7 +66,6 @@ class ParallaxLayer {
         ctx.fillStyle = this.options.color;
         for (let i = 0; i < 3; i++) {
             const bW = scale * (1 - i * 0.2);
-            const bH = scale * 0.4;
             ctx.beginPath();
             ctx.moveTo(0, -scale * 1.2 + i * scale * 0.3);
             ctx.lineTo(-bW, -scale * 0.5 + i * scale * 0.3);
@@ -162,7 +156,7 @@ class ParallaxLayer {
 }
 
 class Bamboo {
-    private x: number;
+    public x: number;
     private height: number;
     private width: number;
     private segments: number;
@@ -286,11 +280,10 @@ class BambooLayer {
         const scrollX = -(cameraX * this.speed) % this.width;
         ctx.save();
         ctx.globalAlpha = this.opacity;
+        // Draw three sets to ensure full screen coverage + buffers
+        this.drawSet(ctx, scrollX - this.width, baseY, time, globalWind);
         this.drawSet(ctx, scrollX, baseY, time, globalWind);
         this.drawSet(ctx, scrollX + this.width, baseY, time, globalWind);
-        if (scrollX > 0) {
-            this.drawSet(ctx, scrollX - this.width, baseY, time, globalWind);
-        }
         ctx.restore();
     }
 
@@ -384,9 +377,9 @@ class GrassLayer {
 
     private drawSet(ctx: CanvasRenderingContext2D, scrollX: number, baseY: number, entities: { x: number, width: number }[], time: number, cameraX: number) {
         this.blades.forEach(b => {
-            // Correct Visibility Check: In a translated context, the visible range is [cameraX, cameraX + width]
+            // Expanded Visibility Check: Buffer increased to 600px to prevent pop-in
             const x = scrollX + b.x;
-            if (x > cameraX - 100 && x < cameraX + ctx.canvas.width + 100) {
+            if (x > cameraX - 600 && x < cameraX + ctx.canvas.width + 600) {
                 b.update(entities, time, scrollX);
                 b.draw(ctx, scrollX, baseY);
             }
@@ -490,6 +483,14 @@ export class BackgroundManager {
         this.drawDustMotes();
     }
 
+    public getLightIntensity(worldX: number, worldY: number) {
+        // Account for 45-degree slant: Light at (x, y) comes from x - y at the top
+        const effectiveX = worldX - worldY;
+        const density = this.getBambooDensity(effectiveX);
+        // Higher density = lower light transmission
+        return Math.max(0, 1.4 - density * 0.6);
+    }
+
     private getBambooDensity(worldX: number) {
         let density = 0;
         // Check both layers, but front layer has more weight
@@ -516,42 +517,46 @@ export class BackgroundManager {
         // Use Screen for that intense glow
         this.ctx.globalCompositeOperation = 'screen';
         
-        // Intense Top-edge "Sun Source"
-        const sunBloom = this.ctx.createLinearGradient(0, 0, 0, 200);
-        sunBloom.addColorStop(0, 'rgba(255, 240, 150, 0.5)'); // Brighter source
+        // --- Soft Sun Source Bloom ---
+        const sunBloom = this.ctx.createLinearGradient(0, 0, 0, 250);
+        sunBloom.addColorStop(0, 'rgba(255, 220, 100, 0.4)'); // Softer source
+        sunBloom.addColorStop(0.5, 'rgba(255, 200, 50, 0.1)');
         sunBloom.addColorStop(1, 'transparent');
         this.ctx.fillStyle = sunBloom;
-        this.ctx.fillRect(0, 0, this.canvas.width, 200);
+        this.ctx.fillRect(0, 0, this.canvas.width, 250);
 
-        const rayClusters = 8; // More clusters for dense light
+        const rayClusters = 8; // Reverted to 8 for balance
         for (let i = 0; i < rayClusters; i++) {
             const screenX = (i / (rayClusters - 1)) * this.canvas.width;
-            const clusterX = screenX - 300 + Math.sin(time * 0.00005 + i) * 100;
+            // More dynamic cluster movement
+            const clusterX = screenX - 400 + Math.sin(time * 0.00004 + i) * 120;
             
             const worldX = cameraX + screenX;
             const density = this.getBambooDensity(worldX);
-            const transmission = Math.max(0.1, 1.4 - density * 0.6);
+            // Boosted transmission for dominant light
+            const transmission = Math.max(0.15, 1.5 - density * 0.5);
             
-            const beamsPerCluster = 5;
+            const beamsPerCluster = 4;
             for (let j = 0; j < beamsPerCluster; j++) {
-                const xBase = clusterX + j * 40 + Math.sin(time * 0.0002 + i * j) * 10;
-                const width = 20 + Math.sin(time * 0.0005 + j) * 15;
+                const xBase = clusterX + j * 55 + Math.sin(time * 0.0002 + i * j) * 15;
+                const width = 15 + Math.sin(time * 0.0005 + j) * 10; // Narrower beams
                 
-                const grad = this.ctx.createLinearGradient(xBase, 0, xBase + 600, this.canvas.height);
-                // Almost full opacity at the top for intense "shredded" look
-                const alphaBase = 0.95 * transmission;
+                const grad = this.ctx.createLinearGradient(xBase, 0, xBase + 700, this.canvas.height);
+                // Subtler Opacity: 0.65
+                const alphaBase = 0.65 * transmission;
                 
-                grad.addColorStop(0, `rgba(255, 250, 220, ${alphaBase.toFixed(2)})`); // White-Gold core
-                grad.addColorStop(0.1, `rgba(255, 220, 50, ${(alphaBase * 0.8).toFixed(2)})`); // Intense Gold
-                grad.addColorStop(0.4, `rgba(255, 150, 0, ${(alphaBase * 0.3).toFixed(2)})`); // Warm Falloff
+                grad.addColorStop(0, `rgba(255, 255, 255, ${alphaBase.toFixed(2)})`); // White-hot core
+                grad.addColorStop(0.1, `rgba(255, 220, 100, ${(alphaBase * 0.9).toFixed(2)})`); // Intense Gold
+                grad.addColorStop(0.3, `rgba(255, 180, 50, ${(alphaBase * 0.6).toFixed(2)})`); // Golden Orange
+                grad.addColorStop(0.8, `rgba(255, 150, 0, ${(alphaBase * 0.1).toFixed(2)})`);
                 grad.addColorStop(1, 'transparent');
                 
                 this.ctx.fillStyle = grad;
                 this.ctx.beginPath();
                 this.ctx.moveTo(xBase, 0);
                 this.ctx.lineTo(xBase + width, 0);
-                this.ctx.lineTo(xBase + width + 600, this.canvas.height);
-                this.ctx.lineTo(xBase + 600, this.canvas.height);
+                this.ctx.lineTo(xBase + width + 700, this.canvas.height);
+                this.ctx.lineTo(xBase + 700, this.canvas.height);
                 this.ctx.closePath();
                 this.ctx.fill();
             }

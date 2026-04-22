@@ -49,11 +49,17 @@ export class Game {
         this.attributes = attributes;
         this.lang = lang;
         this.canvas = document.createElement('canvas');
+        this.canvas.width = 1280;
+        this.canvas.height = 720;
         const container = document.getElementById(containerId);
         if (container) {
             container.appendChild(this.canvas);
         }
         this.ctx = this.canvas.getContext('2d')!;
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.zIndex = '1';
 
         // Load Total Score
         const savedScore = localStorage.getItem('wuxia_total_score');
@@ -633,6 +639,7 @@ export class Game {
 
         this.ctx.translate(-this.camera.x, -this.camera.y);
 
+        const entities = [this.character, ...this.enemies];
         const allBodies = Matter.Composite.allBodies(this.physics.world);
         allBodies.forEach(body => {
             const partsToDraw = body.parts.length > 1 ? body.parts.slice(1) : [body];
@@ -645,8 +652,27 @@ export class Game {
                     this.ctx.lineTo(vertices[i].x, vertices[i].y);
                 }
                 this.ctx.closePath();
+                
+                // --- Dynamic Lighting Effect ---
+                const lightIntensity = this.bg.getLightIntensity(part.position.x, part.position.y);
+                
+                // Highlight only appears if there is enough light transmission
+                if (lightIntensity > 0.2) {
+                    this.ctx.shadowColor = `rgba(255, 250, 180, ${(0.8 * lightIntensity).toFixed(2)})`;
+                    this.ctx.shadowBlur = 10 * lightIntensity;
+                    this.ctx.shadowOffsetX = -4; 
+                    this.ctx.shadowOffsetY = -4;
+                }
+                
                 this.ctx.fillStyle = (part.render.fillStyle as string) || COLORS.GOLD;
                 this.ctx.fill();
+                
+                // Reset shadow for stroke
+                this.ctx.shadowColor = 'transparent';
+                this.ctx.shadowBlur = 0;
+                this.ctx.shadowOffsetX = 0;
+                this.ctx.shadowOffsetY = 0;
+                
                 this.ctx.strokeStyle = COLORS.GOLD;
                 this.ctx.lineWidth = 1;
                 this.ctx.stroke();
@@ -655,8 +681,8 @@ export class Game {
         });
 
         // 5. Draw Foreground (Grass and Overlay - in front of characters)
-        const entities = [this.character, ...this.enemies].map(e => ({ x: e.torso.position.x, width: 40 }));
-        this.bg.drawForeground(this.camera.x, entities);
+        const grassEntities = entities.map(e => ({ x: e.torso.position.x, width: 40 }));
+        this.bg.drawForeground(this.camera.x, grassEntities);
 
         this.vfx.draw(this.ctx);
         this.ctx.restore();
