@@ -39,6 +39,8 @@ export class Game {
     private medicines: Matter.Body[] = [];
     private lang: 'ZH' | 'EN';
     private medicinePityCount: number = 0; // Pity counter for drops
+    private shake: number = 0;
+    private hellOverlay: HTMLElement | null;
 
     constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN') {
         this.difficulty = difficulty;
@@ -84,6 +86,11 @@ export class Game {
         if (container) container.appendChild(this.pauseOverlay);
         this.pauseOverlay.querySelector('#resume-btn')?.addEventListener('click', () => this.togglePause());
         this.pauseOverlay.querySelector('#pause-home-btn')?.addEventListener('click', () => location.reload());
+        
+        this.hellOverlay = document.getElementById('hell-indicator-overlay');
+        if (this.difficulty === 'NIGHTMARE' && this.hellOverlay) {
+            this.hellOverlay.style.display = 'block';
+        }
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -99,11 +106,11 @@ export class Game {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
             collisionGroup: this.playerGroup,
-            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / 99)),
-            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / 99),
-            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / 99),
-            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * 0.005,
-            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / 99)
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
+            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * (0.495 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1))
         });
 
         this.enemies = [];
@@ -204,9 +211,17 @@ export class Game {
                 if (enemy.isDead) {
                     // Count score once
                     if (!enemy.scoreCounted) {
-                        this.currentScore += SPAWN.DIFFICULTY[this.difficulty].scoreReward;
+                        let reward = SPAWN.DIFFICULTY[this.difficulty].scoreReward;
+                        if (this.difficulty === 'NIGHTMARE') {
+                            const extraLayer = Math.floor(this.killsInSession / 5);
+                            reward += extraLayer * 2;
+                        }
+                        this.currentScore += reward;
                         this.killsInSession++;
                         enemy.scoreCounted = true;
+                        
+                        // Screen shake on kill
+                        this.shake = Math.max(this.shake, 12);
 
                         // Try drop medicine if not Nightmare
                         if (this.difficulty !== 'NIGHTMARE') {
@@ -243,7 +258,28 @@ export class Game {
             const targetX = this.character.torso.position.x - this.canvas.width / 2;
             this.camera.x += (targetX - this.camera.x) * 0.1; // Smooth follow
 
+            // Handle Shake Decay
+            if (this.shake > 0) {
+                this.shake *= 0.9;
+                if (this.shake < 0.1) this.shake = 0;
+            }
+
             this.vfx.update(this.canvas.height - 100);
+
+            // --- Hell Mode Atmosphere: Rising Embers ---
+            if (this.difficulty === 'NIGHTMARE' && Math.random() < 0.3) {
+                const spawnX = this.camera.x + Math.random() * this.canvas.width;
+                const spawnY = this.canvas.height; 
+                this.vfx.spawn(spawnX, spawnY, '#FF4500', 1, 0.5); // Orange-red embers
+                // Tweak the last particle's velocity to rise
+                const p = this.vfx.particles[this.vfx.particles.length - 1];
+                if (p) {
+                    p.vy = -Math.random() * 2 - 1;
+                    p.vx = (Math.random() - 0.5) * 1;
+                    p.maxLife = p.life = 100 + Math.random() * 100;
+                    p.gravityScale = -0.1; // Slowly rise
+                }
+            }
 
             // Show buttons if player is dead (no more victory condition)
             if (this.character.isDead) {
@@ -365,11 +401,11 @@ export class Game {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
             collisionGroup: this.playerGroup,
-            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / 99)),
-            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / 99),
-            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / 99),
-            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * 0.005,
-            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / 99)
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
+            damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * (0.495 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1))
         });
 
         this.enemies = [];
@@ -571,6 +607,14 @@ export class Game {
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.save();
+        
+        // Apply Shake to Camera
+        if (this.shake > 0) {
+            const sx = (Math.random() - 0.5) * this.shake;
+            const sy = (Math.random() - 0.5) * this.shake;
+            this.ctx.translate(sx, sy);
+        }
+
         this.ctx.translate(-this.camera.x, -this.camera.y);
 
         const allBodies = Matter.Composite.allBodies(this.physics.world);
@@ -596,6 +640,22 @@ export class Game {
 
         this.vfx.draw(this.ctx);
         this.ctx.restore();
+
+        // --- Apply Nightmare Atmosphere (Overlay) ---
+        if (this.difficulty === 'NIGHTMARE') {
+            const pulse = Math.sin(this.gameTime * 0.002) * 0.1 + 0.15;
+            
+            // Outer red glow (vignette)
+            const grad = this.ctx.createRadialGradient(
+                this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.3,
+                this.canvas.width / 2, this.canvas.height / 2, this.canvas.height * 0.8
+            );
+            grad.addColorStop(0, 'transparent');
+            grad.addColorStop(1, `rgba(142, 35, 35, ${pulse})`);
+            
+            this.ctx.fillStyle = grad;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
 
         const barW = 60;
         const barH = 5;
@@ -662,12 +722,10 @@ export class Game {
         this.ctx.textAlign = 'left';
         this.ctx.fillText(`${this.t('CURRENT_SCORE')}: ${this.currentScore}`, 40, 47);
 
-        // Nightmare indicator
-        if (this.difficulty === 'NIGHTMARE') {
+        // Nightmare indicator in DOM
+        if (this.difficulty === 'NIGHTMARE' && this.hellOverlay) {
             const currentLayer = Math.floor(this.killsInSession / 5) + 1;
-            this.ctx.fillStyle = COLORS.VERMILION;
-            this.ctx.font = 'bold 24px "Cinzel", serif';
-            this.ctx.fillText(this.t('HELL_INDICATOR', { layer: currentLayer }), 40, 85);
+            this.hellOverlay.innerText = this.t('HELL_INDICATOR', { layer: currentLayer });
         }
 
         this.ctx.textAlign = 'center'; // Restore for other calls

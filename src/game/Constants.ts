@@ -40,6 +40,7 @@ export const CHARACTER = {
   YAODAO_CURVE: 15, // Degrees/offset for blade curve
   YAODAO_MASS: 1.5,   // Reduced to prevent tipping character over
   MAX_HP: 100,
+  MAX_ATTR_LEVEL: 30,
 };
 
 export const COMBAT = {

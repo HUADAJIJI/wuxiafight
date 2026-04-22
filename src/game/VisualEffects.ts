@@ -12,10 +12,11 @@ export interface Particle {
     parentBody?: Matter.Body;
     localPos?: { x: number, y: number };
     isStatic?: boolean; // For ground blood
+    gravityScale?: number;
 }
 
 export class ParticleSystem {
-    private particles: Particle[] = [];
+    public particles: Particle[] = [];
     private maxParticles: number = 800; // Limit for performance
 
     public spawn(x: number, y: number, color: string, count: number, speedScale: number = 1, attachedBody?: Matter.Body) {
@@ -68,7 +69,7 @@ export class ParticleSystem {
                 // Fly
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.15; // Gravity
+                p.vy += 0.15 * (p.gravityScale ?? 1.0); // Gravity
                 p.vx *= 0.98; // Friction
 
                 // Ground hit

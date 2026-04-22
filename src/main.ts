@@ -1,6 +1,6 @@
 import './style.css';
 import { Game } from './game/Game';
-import { getTranslation } from './game/Constants';
+import { getTranslation, CHARACTER } from './game/Constants';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.classList.add('menu-mode');
@@ -8,6 +8,10 @@ app.classList.add('menu-mode');
 // --- 属性与记录系统状态 ---
 const DEFAULT_ATTRS = { bili: 1, shenfa: 1, gengu: 1, neigong: 1 };
 let attributes = JSON.parse(localStorage.getItem('wuxia_attributes') || JSON.stringify(DEFAULT_ATTRS));
+// Clamp existing attributes to new max level
+Object.keys(attributes).forEach(key => {
+    if (attributes[key] > CHARACTER.MAX_ATTR_LEVEL) attributes[key] = CHARACTER.MAX_ATTR_LEVEL;
+});
 let totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
 let leaderboard: any[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'EN';
@@ -22,7 +26,9 @@ function saveGame() {
 }
 
 function getUpgradeCost(level: number): number {
-    return Math.floor(10 + Math.pow(level, 1.2) * 2);
+    // Increased power from 1.2 to 1.5 to compensate for fewer levels, 
+    // but still much faster overall than 100 levels.
+    return Math.floor(10 + Math.pow(level, 1.5) * 5);
 }
 
 function renderUI() {
@@ -34,6 +40,7 @@ function renderUI() {
       <div class="ui-overlay" id="main-title">
         <h1>${t('TITLE')}</h1>
         <div class="controls-hint">${t('HINT')}</div>
+        <div id="hell-indicator-overlay" class="hell-indicator-overlay"></div>
       </div>
 
       <div class="difficulty-overlay" id="start-menu">
@@ -93,7 +100,7 @@ function renderUI() {
 
 function renderAttrRow(name: string, key: string, level: number) {
     const cost = getUpgradeCost(level);
-    const canAfford = totalScore >= cost && level < 100;
+    const canAfford = totalScore >= cost && level < CHARACTER.MAX_ATTR_LEVEL;
     return `
         <div class="attr-row">
             <div class="attr-info">
@@ -101,7 +108,7 @@ function renderAttrRow(name: string, key: string, level: number) {
                 <span class="attr-level">${t('REALM')}: ${level} ${t('LEVEL')}</span>
             </div>
             <button class="upgrade-btn ${canAfford ? '' : 'disabled'}" data-attr="${key}" ${canAfford ? '' : 'disabled'}>
-                ${level >= 100 ? t('MAX_LEVEL') : `${t('UPGRADE')} (${cost})`}
+                ${level >= CHARACTER.MAX_ATTR_LEVEL ? t('MAX_LEVEL') : `${t('UPGRADE')} (${cost})`}
             </button>
         </div>
     `;
@@ -136,7 +143,7 @@ function setupEventListeners() {
             const attrKey = btn.getAttribute('data-attr') as keyof typeof attributes;
             const cost = getUpgradeCost(attributes[attrKey]);
             
-            if (totalScore >= cost && attributes[attrKey] < 100) {
+            if (totalScore >= cost && attributes[attrKey] < CHARACTER.MAX_ATTR_LEVEL) {
                 totalScore -= cost;
                 attributes[attrKey]++;
                 saveGame();
