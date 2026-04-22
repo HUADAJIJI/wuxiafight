@@ -144,20 +144,15 @@ export class Game {
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
         window.addEventListener('mousemove', (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            this.mouse.x = e.clientX - rect.left + this.camera.x;
-            this.mouse.y = e.clientY - rect.top + this.camera.y;
+            const scale = (window as any).gameScale || 1;
+            this.mouse.x = (e.clientX - rect.left) / scale + this.camera.x;
+            this.mouse.y = (e.clientY - rect.top) / scale + this.camera.y;
         });
     }
 
     private resize() {
-        const container = this.canvas.parentElement;
-        if (container) {
-            this.canvas.width = container.clientWidth;
-            this.canvas.height = container.clientHeight;
-        } else {
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
-        }
+        this.canvas.width = 1280;
+        this.canvas.height = 720;
     }
 
     private loop() {

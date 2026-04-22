@@ -3,13 +3,14 @@ import { Game } from './game/Game';
 import { getTranslation } from './game/Constants';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
+app.classList.add('menu-mode');
 
 // --- 属性与记录系统状态 ---
 const DEFAULT_ATTRS = { bili: 1, shenfa: 1, gengu: 1, neigong: 1 };
 let attributes = JSON.parse(localStorage.getItem('wuxia_attributes') || JSON.stringify(DEFAULT_ATTRS));
 let totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
 let leaderboard: any[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
-let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'ZH';
+let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'EN';
 
 function t(key: any, params: any = {}) {
     return getTranslation(currentLang, key, params);
@@ -124,6 +125,7 @@ function setupEventListeners() {
         (btn as HTMLButtonElement).onclick = () => {
             const diff = btn.getAttribute('data-diff') as any;
             startMenu.style.display = 'none';
+            app.classList.remove('menu-mode');
             new Game('app', diff, attributes, currentLang);
         };
     });
@@ -143,5 +145,16 @@ function setupEventListeners() {
         };
     });
 }
+
+function updateScale() {
+    const baseWidth = 1280;
+    const baseHeight = 720;
+    const scale = Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight);
+    app.style.transform = `scale(${scale})`;
+    (window as any).gameScale = scale;
+}
+
+window.addEventListener('resize', updateScale);
+updateScale();
 
 renderUI();

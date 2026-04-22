@@ -43,20 +43,28 @@ body {
   color: var(--color-silk);
   font-family: var(--font-body);
   overflow: hidden;
+  margin: 0;
+  padding: 0;
   height: 100vh;
+  width: 100vw;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
 #app {
-  width: 100%;
-  height: 100%;
+  width: 1280px;
+  height: 720px;
   position: relative;
-  border: 12px solid var(--color-gold);
   background: radial-gradient(circle at center, #2c3e50 0%, #1a1a1a 100%);
   box-shadow: inset 0 0 100px rgba(0,0,0,0.8);
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: border 0.3s ease;
+}
+
+#app.menu-mode {
+  border: 12px solid var(--color-gold);
 }
 
 .ui-overlay {
@@ -70,10 +78,10 @@ body {
 
 h1 {
   font-family: var(--font-heading);
-  font-size: 3rem;
+  font-size: 2.2rem;
   color: var(--color-gold);
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
 }
 
 .controls-hint {
@@ -183,16 +191,16 @@ canvas {
 
 .difficulty-overlay h2 {
   font-family: var(--font-heading);
-  font-size: 3rem;
-  margin-bottom: 3rem;
-  letter-spacing: 0.5rem;
+  font-size: 2.2rem;
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.3rem;
   text-shadow: 0 0 20px rgba(197, 160, 89, 0.4);
 }
 
 .difficulty-options {
   display: flex;
   flex-direction: column;
-  gap: 1.8rem;
+  gap: 1rem;
   width: 100%;
   align-items: center;
 }
@@ -201,12 +209,12 @@ canvas {
   background: transparent;
   color: var(--color-silk);
   border: 1px solid var(--color-gold);
-  padding: 1.2rem;
+  padding: 0.8rem;
   font-family: var(--font-body);
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   width: 100%;
-  max-width: 450px;
-  min-height: 85px;
+  max-width: 400px;
+  min-height: 65px;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
@@ -249,7 +257,7 @@ canvas {
 .menu-content {
   text-align: center;
   background: rgba(26, 26, 26, 0.95);
-  padding: 2rem;
+  padding: 1.2rem;
   border: 1px solid var(--color-gold);
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
   flex: 1;
@@ -257,14 +265,14 @@ canvas {
 
 .total-score-display {
   font-family: var(--font-body);
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   color: var(--color-gold);
-  margin-bottom: 2rem;
+  margin-bottom: 1.2rem;
   font-weight: 600;
   letter-spacing: 0.1rem;
   border-bottom: 1px solid var(--color-gold);
   display: inline-block;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.3rem;
 }
 
 .main-container {
@@ -282,15 +290,15 @@ canvas {
 .attr-list {
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
-  margin-top: 1rem;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
 }
 
 .attr-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
+  padding: 0.6rem 0.8rem;
   border: 1px solid rgba(197, 160, 89, 0.3);
   background: rgba(0, 0, 0, 0.3);
 }
@@ -304,7 +312,7 @@ canvas {
 
 .attr-name {
   font-family: var(--font-heading);
-  font-size: 1.4rem;
+  font-size: 1.1rem;
   color: var(--color-gold);
 }
 
@@ -351,9 +359,9 @@ canvas {
 .leaderboard-list {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  margin-top: 1rem;
-  max-height: 450px;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+  max-height: 400px;
   overflow-y: auto;
   padding-right: 10px;
 }
