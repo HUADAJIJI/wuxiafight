@@ -30,14 +30,14 @@ function renderUI() {
     leaderboard = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 
     app.innerHTML = `
-      <button id="lang-switch" class="lang-btn">${t('LANG_BTN')}</button>
-
       <div class="ui-overlay" id="main-title">
         <h1>${t('TITLE')}</h1>
         <div class="controls-hint">${t('HINT')}</div>
       </div>
-      
+
       <div class="difficulty-overlay" id="start-menu">
+        <button id="lang-switch" class="lang-btn">${t('LANG_BTN')}</button>
+        
         <div class="main-container">
             <!-- 1. 最左侧：江湖龙虎榜 -->
             <div class="menu-content leaderboard-panel">

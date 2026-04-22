@@ -3,6 +3,7 @@ import { Character } from './Character';
 import { AIController } from './AIController';
 import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE, getTranslation } from './Constants';
 import { ParticleSystem } from './VisualEffects';
+import { audioManager } from './Audio';
 import Matter from 'matter-js';
 import { Vector } from 'matter-js';
 
@@ -428,6 +429,9 @@ export class Game {
             const parentA = bodyA.parent || bodyA;
             const parentB = bodyB.parent || bodyB;
             
+            // 排除同一把剑内部零件的自碰撞
+            if (parentA === parentB) return;
+
             const relVel = Vector.sub(parentA.velocity, parentB.velocity);
             const speed = Vector.magnitude(relVel);
             
@@ -435,6 +439,9 @@ export class Game {
                 const charA = this.getCharacterFromBody(parentA);
                 const charB = this.getCharacterFromBody(parentB);
                 
+                // 排除同一个角色的自碰撞
+                if (charA && charB && charA === charB) return;
+
                 if (charA && charB) {
                     const normal = pair.collision.normal;
                     const recoil = COMBAT.CLASH.RECOIL_FORCE * speed;
@@ -468,6 +475,10 @@ export class Game {
                     const contact = pair.contacts[0]?.vertex;
                     if (contact && speed > COMBAT.CLASH.SPARK_THRESHOLD) {
                         this.vfx.spawn(contact.x, contact.y, COLORS.GOLD, COMBAT.CLASH.SPARK_COUNT, speed * 0.4);
+                        // 非线性音量：调小叮叮声，使其更加背景化
+                        const relativeSpeed = Math.max(0, speed - COMBAT.CLASH.SPARK_THRESHOLD);
+                        const dynamicVol = Math.min(0.3, Math.pow(relativeSpeed, 2) * 0.02);
+                        audioManager.playClash(dynamicVol);
                     }
                 }
             }
@@ -503,6 +514,10 @@ export class Game {
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 0.4, target);
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, Math.floor(baseCount * 0.3), speed * 0.2, blade);
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 1.0);
+                    // 非线性音量：显著增强砍中身体的音量上限和灵敏度
+                    const impactIntensity = Math.max(0, damage - 2); 
+                    const dynamicVol = Math.min(1.0, Math.pow(impactIntensity, 1.5) * 0.025);
+                    audioManager.playHit(dynamicVol);
                 }
             }
         }
