@@ -3,16 +3,23 @@
  */
 export class AudioManager {
     private ctx: AudioContext | null = null;
+    private windGain: GainNode | null = null;
+    private windFilter: BiquadFilterNode | null = null;
 
     constructor() {
         // AudioContext should be initialized on user interaction
     }
 
-    private init() {
+    public init() {
         if (!this.ctx) {
             this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            this.startAmbient();
+        } else if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
         }
     }
+
+    private ambientStarted = false;
 
     /**
      * Synthesize a metallic sword clash sound
@@ -84,24 +91,24 @@ export class AudioManager {
 
         const now = this.ctx.currentTime;
         
-        // 1. 沉闷的撞击声 (Thud)
+        // 1. 沉闷的撞击声 (Thud - smoother and deeper)
         const thudOsc = this.ctx.createOscillator();
         const thudGain = this.ctx.createGain();
-        thudOsc.type = 'triangle';
-        thudOsc.frequency.setValueAtTime(120, now);
-        thudOsc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+        thudOsc.type = 'sine'; // Use sine for a cleaner, non-explosive thud
+        thudOsc.frequency.setValueAtTime(80, now); // Lower starting frequency
+        thudOsc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
         
-        thudGain.gain.setValueAtTime(volume, now);
-        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        thudGain.gain.setValueAtTime(0, now);
+        thudGain.gain.linearRampToValueAtTime(volume, now + 0.01); // Soft attack to avoid "pop"
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
         
         thudOsc.connect(thudGain);
         thudGain.connect(this.ctx.destination);
         thudOsc.start(now);
-        thudOsc.stop(now + 0.15);
+        thudOsc.stop(now + 0.2);
 
-        // 2. 飙血的噗嗤声 (Squelch/Splatter)
-        // 使用带通滤波的白噪音
-        const bufferSize = this.ctx.sampleRate * 0.2;
+        // 2. 飙血的噗嗤声 (Squelch - deeper and wetter)
+        const bufferSize = this.ctx.sampleRate * 0.25;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
@@ -112,22 +119,78 @@ export class AudioManager {
         noise.buffer = buffer;
 
         const filter = this.ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(1000, now);
-        filter.frequency.exponentialRampToValueAtTime(300, now + 0.2);
-        filter.Q.setValueAtTime(1.0, now);
-
+        filter.type = 'lowpass'; // Use lowpass for a muffled, meaty sound
+        filter.frequency.setValueAtTime(600, now); // Lower frequency
+        filter.frequency.exponentialRampToValueAtTime(100, now + 0.25);
+        
         const noiseGain = this.ctx.createGain();
         noiseGain.gain.setValueAtTime(0, now);
-        noiseGain.gain.linearRampToValueAtTime(volume * 0.6, now + 0.02); // 稍微延迟一点点达到峰值
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        noiseGain.gain.linearRampToValueAtTime(volume * 0.5, now + 0.03); 
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
 
         noise.connect(filter);
         filter.connect(noiseGain);
         noiseGain.connect(this.ctx.destination);
         
         noise.start(now);
-        noise.stop(now + 0.2);
+        noise.stop(now + 0.25);
+    }
+    public startAmbient() {
+        if (this.ambientStarted) return;
+        this.ambientStarted = true;
+        
+        if (!this.ctx) this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+
+        // 1. Wind / Jungle (Low-frequency moving noise)
+        const windSource = this.createNoiseSource(3.0);
+        this.windFilter = this.ctx.createBiquadFilter();
+        this.windGain = this.ctx.createGain();
+
+        this.windFilter.type = 'lowpass';
+        this.windFilter.frequency.setValueAtTime(300, now); // Lower frequency for "whooshing"
+        
+        this.windGain.gain.setValueAtTime(0.05, now); // Slightly more audible base
+        
+        windSource.connect(this.windFilter);
+        this.windFilter.connect(this.windGain);
+        this.windGain.connect(this.ctx.destination);
+        windSource.start();
+    }
+
+    /**
+     * Update wind audio based on visual wind strength
+     */
+    public updateWind(strength: number) {
+        if (!this.ctx || !this.windGain || !this.windFilter) return;
+        
+        const now = this.ctx.currentTime;
+        // Map strength (approx -0.05 to 0.15) to volume and frequency
+        const normalizedStrength = Math.max(0, strength + 0.05);
+        
+        // Volume: 0.03 (breeze) to 0.35+ (strong gust) - Increased for immersion
+        const targetVol = 0.03 + normalizedStrength * 1.8;
+        this.windGain.gain.setTargetAtTime(targetVol, now, 0.2); // Smooth transition
+
+        // Frequency: 200Hz to 600Hz (whooshing becomes higher as it gets faster)
+        const targetFreq = 200 + normalizedStrength * 1500;
+        this.windFilter.frequency.setTargetAtTime(targetFreq, now, 0.3);
+    }
+
+    private createNoiseSource(duration: number): AudioBufferSourceNode {
+        if (!this.ctx) throw new Error("AudioContext not initialized");
+        const bufferSize = this.ctx.sampleRate * duration;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        return source;
     }
 }
 

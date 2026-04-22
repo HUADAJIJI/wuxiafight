@@ -4,6 +4,7 @@ import { AIController } from './AIController';
 import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE, getTranslation } from './Constants';
 import { ParticleSystem } from './VisualEffects';
 import { audioManager } from './Audio';
+import { BackgroundManager } from './Background';
 import Matter from 'matter-js';
 import { Vector } from 'matter-js';
 
@@ -41,6 +42,7 @@ export class Game {
     private medicinePityCount: number = 0; // Pity counter for drops
     private shake: number = 0;
     private hellOverlay: HTMLElement | null;
+    private bg: BackgroundManager;
 
     constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN') {
         this.difficulty = difficulty;
@@ -85,12 +87,17 @@ export class Game {
         `;
         if (container) container.appendChild(this.pauseOverlay);
         this.pauseOverlay.querySelector('#resume-btn')?.addEventListener('click', () => this.togglePause());
-        this.pauseOverlay.querySelector('#pause-home-btn')?.addEventListener('click', () => location.reload());
+        this.pauseOverlay.querySelector('#pause-home-btn')?.addEventListener('click', () => {
+            this.saveGameProgress();
+            location.reload();
+        });
         
         this.hellOverlay = document.getElementById('hell-indicator-overlay');
         if (this.difficulty === 'NIGHTMARE' && this.hellOverlay) {
             this.hellOverlay.style.display = 'block';
         }
+
+        this.bg = new BackgroundManager(this.canvas, this.ctx);
 
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -125,6 +132,9 @@ export class Game {
         });
 
         this.setupInputs();
+        
+        // Initialize Audio (will start ambient sounds)
+        audioManager.init();
         
         // Start immediately since difficulty is already chosen
         this.spawnEnemy();
@@ -284,25 +294,7 @@ export class Game {
             // Show buttons if player is dead (no more victory condition)
             if (this.character.isDead) {
                 if (this.restartBtn.style.display !== 'block') {
-                    // Just died: Save total score for upgrading
-                    this.totalScore += this.currentScore;
-                    localStorage.setItem('wuxia_total_score', this.totalScore.toString());
-
-                    // Save to Leaderboard (Top 20 with Date)
-                    let leaderboard: {score: number, date: string}[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
-                    
-                    // Migration check: if old data was number[], clear it or handle it
-                    if (leaderboard.length > 0 && typeof leaderboard[0] === 'number') {
-                        leaderboard = [];
-                    }
-
-                    const nowTime = new Date();
-                    const dateStr = `${nowTime.getFullYear()}-${String(nowTime.getMonth() + 1).padStart(2, '0')}-${String(nowTime.getDate()).padStart(2, '0')} ${String(nowTime.getHours()).padStart(2, '0')}:${String(nowTime.getMinutes()).padStart(2, '0')}:${String(nowTime.getSeconds()).padStart(2, '0')}`;
-                    
-                    leaderboard.push({ score: this.currentScore, date: dateStr });
-                    leaderboard.sort((a, b) => b.score - a.score);
-                    leaderboard = leaderboard.slice(0, 20);
-                    localStorage.setItem('wuxia_leaderboard', JSON.stringify(leaderboard));
+                    this.saveGameProgress();
                 }
                 this.restartBtn.style.display = 'block';
                 this.homeBtn.style.display = 'block';
@@ -374,6 +366,30 @@ export class Game {
         const input = { ...rawInput };
         const mouse = { ...rawMouse };
         return { input, mouse };
+    }
+
+    private saveGameProgress() {
+        if (this.currentScore <= 0) return;
+
+        // Save total score for upgrading
+        this.totalScore += this.currentScore;
+        localStorage.setItem('wuxia_total_score', this.totalScore.toString());
+
+        // Save to Leaderboard (Top 20 with Date)
+        let leaderboard: { score: number, date: string }[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
+
+        // Migration check: if old data was number[], clear it or handle it
+        if (leaderboard.length > 0 && typeof (leaderboard[0] as any) === 'number') {
+            leaderboard = [];
+        }
+
+        const nowTime = new Date();
+        const dateStr = `${nowTime.getFullYear()}-${String(nowTime.getMonth() + 1).padStart(2, '0')}-${String(nowTime.getDate()).padStart(2, '0')} ${String(nowTime.getHours()).padStart(2, '0')}:${String(nowTime.getMinutes()).padStart(2, '0')}:${String(nowTime.getSeconds()).padStart(2, '0')}`;
+
+        leaderboard.push({ score: this.currentScore, date: dateStr });
+        leaderboard.sort((a, b) => b.score - a.score);
+        leaderboard = leaderboard.slice(0, 20);
+        localStorage.setItem('wuxia_leaderboard', JSON.stringify(leaderboard));
     }
 
     private flipCharacter(char: Character): Character {
@@ -507,9 +523,9 @@ export class Game {
                     const contact = pair.contacts[0]?.vertex;
                     if (contact && speed > COMBAT.CLASH.SPARK_THRESHOLD) {
                         this.vfx.spawn(contact.x, contact.y, COLORS.GOLD, COMBAT.CLASH.SPARK_COUNT, speed * 0.4);
-                        // 非线性音量：调小叮叮声，使其更加背景化
+                        // 非线性音量：让速度对音量的影响更明显
                         const relativeSpeed = Math.max(0, speed - COMBAT.CLASH.SPARK_THRESHOLD);
-                        const dynamicVol = Math.min(0.3, Math.pow(relativeSpeed, 2) * 0.02);
+                        const dynamicVol = Math.min(0.8, Math.pow(relativeSpeed, 1.2) * 0.15);
                         audioManager.playClash(dynamicVol);
                     }
                 }
@@ -546,9 +562,9 @@ export class Game {
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 0.4, target);
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, Math.floor(baseCount * 0.3), speed * 0.2, blade);
                     this.vfx.spawn(contact.x, contact.y, COLORS.VERMILION, baseCount, speed * 1.0);
-                    // 非线性音量：显著增强砍中身体的音量上限和灵敏度
-                    const impactIntensity = Math.max(0, damage - 2); 
-                    const dynamicVol = Math.min(1.0, Math.pow(impactIntensity, 1.5) * 0.025);
+                    // 非线性音量：增强速度对打击音量的反馈，让重击更有力
+                    const impactIntensity = Math.max(0, damage - 1); 
+                    const dynamicVol = Math.min(1.0, Math.pow(impactIntensity, 1.1) * 0.08);
                     audioManager.playHit(dynamicVol);
                 }
             }
@@ -603,8 +619,8 @@ export class Game {
     }
 
     private draw() {
-        this.ctx.fillStyle = COLORS.LACQUER;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // 1. Draw Far Background and Bamboo (Behind characters)
+        this.bg.draw(this.camera.x);
 
         this.ctx.save();
         
@@ -638,8 +654,15 @@ export class Game {
             });
         });
 
+        // 5. Draw Foreground (Grass and Overlay - in front of characters)
+        const entities = [this.character, ...this.enemies].map(e => ({ x: e.torso.position.x, width: 40 }));
+        this.bg.drawForeground(this.camera.x, entities);
+
         this.vfx.draw(this.ctx);
         this.ctx.restore();
+
+        // 6. Draw Screen-Space Overlays (Parchment, Vignette)
+        this.bg.drawOverlay();
 
         // --- Apply Nightmare Atmosphere (Overlay) ---
         if (this.difficulty === 'NIGHTMARE') {
