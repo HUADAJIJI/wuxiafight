@@ -70,6 +70,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* CrazyGames Technical Requirements: Prevent selection and magnification */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 #app {
@@ -349,9 +355,56 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4rem 0.6rem; /* Tighter rows */
-  border: 1px solid rgba(197, 160, 89, 0.3);
-  background: rgba(0, 0, 0, 0.3);
+  padding: 0.4rem 0.6rem;
+  background: rgba(26, 26, 26, 0.5);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  margin-bottom: 0.5rem;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.attr-row:hover {
+  background: rgba(142, 35, 35, 0.2);
+  border-color: var(--color-gold);
+}
+
+.attr-tooltip-popup {
+  position: absolute;
+  left: -260px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 240px;
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid var(--color-gold);
+  color: var(--color-silk);
+  padding: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+  z-index: 100;
+  pointer-events: none;
+  text-align: left;
+}
+
+.attr-row:hover .attr-tooltip-popup {
+  opacity: 1;
+  visibility: visible;
+  left: -270px;
+}
+
+/* Add a small arrow to the tooltip */
+.attr-tooltip-popup::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 6px solid var(--color-gold);
 }
 
 .attr-info {
@@ -538,4 +591,183 @@ canvas {
 #pause-home-btn:hover {
   background: var(--color-jade);
   border-color: var(--color-jade);
+}
+
+/* --- Onboarding / Tutorial Styles --- */
+.welcome-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(44, 62, 80, 0.9) 0%, rgba(26, 26, 26, 1) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+  padding: 2rem;
+  text-align: center;
+}
+
+.welcome-content {
+  max-width: 700px;
+  border: 3px double var(--color-gold);
+  padding: 4rem;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 100px rgba(0, 0, 0, 0.8);
+}
+
+.welcome-content h1 {
+  font-size: 4rem;
+  letter-spacing: 1rem;
+  margin-bottom: 2rem;
+}
+
+.welcome-content p {
+  font-size: 1.5rem;
+  line-height: 2;
+  margin-bottom: 3rem;
+  color: var(--color-silk);
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+}
+
+.welcome-actions button {
+  background: var(--color-vermilion);
+  color: var(--color-silk);
+  border: 1px solid var(--color-gold);
+  padding: 1rem 2.5rem;
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.welcome-actions button.skip-btn {
+  background: transparent;
+  opacity: 0.6;
+}
+
+.welcome-actions button:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Tutorial In-Game Overlay --- */
+.tutorial-hud {
+  position: absolute;
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.tut-step {
+  background: rgba(142, 35, 35, 0.9);
+  color: var(--color-silk);
+  padding: 1rem 2rem;
+  border: 2px solid var(--color-gold);
+  font-size: 1.4rem;
+  font-weight: bold;
+  box-shadow: 4px 4px 0px black;
+  animation: slideUp 0.5s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.tutorial-end-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(26, 26, 26, 0.95);
+  border: 4px double var(--color-gold);
+  padding: 3rem;
+  text-align: center;
+  z-index: 3000;
+  width: 500px;
+  box-shadow: 0 0 100px black;
+}
+
+.tutorial-end-overlay h2 {
+  font-size: 2.5rem;
+  color: var(--color-gold);
+  margin-bottom: 1.5rem;
+}
+
+.tutorial-end-overlay p {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+}
+
+.highlight-guide {
+  position: absolute;
+  border: 4px solid var(--color-vermilion);
+  border-radius: 8px;
+  pointer-events: none;
+  animation: pulse-guide 1s infinite alternate;
+  z-index: 1500;
+}
+
+@keyframes pulse-guide {
+  from { box-shadow: 0 0 10px var(--color-vermilion); transform: scale(1); }
+  to { box-shadow: 0 0 30px var(--color-vermilion); transform: scale(1.05); }
+}
+
+/* --- Menu Tutorial Tooltips --- */
+.tut-tooltip {
+  position: absolute;
+  background: rgba(26, 26, 26, 0.95);
+  border: 2px solid var(--color-gold);
+  color: var(--color-silk);
+  padding: 1.5rem;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 4px 4px 0px var(--color-vermilion);
+  z-index: 2000;
+  max-width: 350px;
+  text-align: center;
+  font-size: 1.2rem;
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tut-tooltip.pos-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 500px;
+  font-size: 1.4rem;
+}
+
+.tut-tooltip button {
+  background: var(--color-vermilion);
+  color: var(--color-silk);
+  border: 1px solid var(--color-gold);
+  padding: 0.8rem 2rem;
+  margin-top: 1.5rem;
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tut-tooltip button:hover {
+  background: var(--color-gold);
+  color: var(--color-lacquer);
+  transform: translateY(-2px);
 }

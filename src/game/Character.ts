@@ -328,10 +328,10 @@ export class Character {
         this.damageMultiplier = state.damageMultiplier ?? this.damageMultiplier;
     }
 
-    public takeDamage(amount: number, gameTime: number = Date.now()) {
+    public takeDamage(amount: number, gameTime: number = Date.now(), minHp: number = 0) {
         if (this.isDead) return;
-        this.hp = Math.max(0, this.hp - amount);
-        if (this.hp <= 0) {
+        this.hp = Math.max(minHp, this.hp - amount);
+        if (this.hp <= 0 && minHp === 0) {
             this.isDead = true;
             this.deathTime = gameTime;
             if (this.handConstraint) {

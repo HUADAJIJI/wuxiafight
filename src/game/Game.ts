@@ -43,11 +43,29 @@ export class Game {
     private shake: number = 0;
     private hellOverlay: HTMLElement | null;
     private bg: BackgroundManager;
+    private isTutorial: boolean;
+    private tutStep: number = 0;
+    private tutHud: HTMLDivElement | null = null;
+    private tutTimer: number = 0;
+    private tutActions: { moveLeft: boolean, moveRight: boolean, jump: boolean, flip: boolean, attack: boolean, medicine: boolean } = { 
+        moveLeft: false, moveRight: false, jump: false, flip: false, attack: false, medicine: false 
+    };
+    private onTutorialEnd?: () => void;
+    private animationId: number = 0;
+    
+    // Handler references for cleanup
+    private keydownHandler: any;
+    private keyupHandler: any;
+    private mousemoveHandler: any;
+    private blurHandler: any;
+    private collisionHandler: any;
 
-    constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN') {
+    constructor(containerId: string, difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'NIGHTMARE', attributes: any, lang: 'ZH' | 'EN', isTutorial: boolean = false, onTutorialEnd?: () => void) {
         this.difficulty = difficulty;
         this.attributes = attributes;
         this.lang = lang;
+        this.isTutorial = isTutorial;
+        this.onTutorialEnd = onTutorialEnd;
         this.canvas = document.createElement('canvas');
         this.canvas.width = 1280;
         this.canvas.height = 720;
@@ -133,10 +151,11 @@ export class Game {
 
         this.vfx = new ParticleSystem();
 
-        // Register Collisions
-        Matter.Events.on(this.physics.engine, 'collisionStart', (event) => {
-            event.pairs.forEach(pair => this.handleCollision(pair));
-        });
+        // Bind and store collision handler for cleanup
+        this.collisionHandler = (event: any) => {
+            event.pairs.forEach((pair: any) => this.handleCollision(pair));
+        };
+        Matter.Events.on(this.physics.engine, 'collisionStart', this.collisionHandler);
 
         this.setupInputs();
         
@@ -144,10 +163,23 @@ export class Game {
         audioManager.init();
         
         // Start immediately since difficulty is already chosen
-        this.spawnEnemy();
+        if (this.isTutorial) {
+            this.setupTutorialHud();
+        } else {
+            this.spawnEnemy();
+        }
+        
         this.lastSpawnTime = 0; // Use 0 for gameTime
         this.lastTick = Date.now();
         this.physics.start();
+
+        // CrazyGames SDK: Gameplay Start
+        try {
+            (window as any).CrazyGames?.SDK?.game?.gameplayStart();
+        } catch (e) {
+            console.warn('CrazyGames SDK not found or failed to start:', e);
+        }
+
         this.loop();
     }
 
@@ -156,23 +188,33 @@ export class Game {
     }
 
     private setupInputs() {
-        window.addEventListener('keydown', (e) => {
+        this.keydownHandler = (e: KeyboardEvent) => {
             if (e.code === 'Escape') {
                 this.togglePause();
                 return;
             }
-            if (['KeyA', 'KeyD', 'KeyS', 'Space', 'KeyF'].includes(e.code)) {
+            if (['KeyA', 'KeyQ', 'KeyD', 'KeyS', 'Space', 'KeyW', 'KeyZ', 'KeyF'].includes(e.code)) {
                 e.preventDefault();
             }
             this.keys[e.code] = true;
-        });
-        window.addEventListener('keyup', (e) => this.keys[e.code] = false);
-        window.addEventListener('mousemove', (e) => {
+        };
+        this.keyupHandler = (e: KeyboardEvent) => this.keys[e.code] = false;
+        this.mousemoveHandler = (e: MouseEvent) => {
             const rect = this.canvas.getBoundingClientRect();
             const scale = (window as any).gameScale || 1;
             this.mouse.x = (e.clientX - rect.left) / scale + this.camera.x;
             this.mouse.y = (e.clientY - rect.top) / scale + this.camera.y;
-        });
+        };
+        this.blurHandler = () => {
+            if (!this.isPaused && !this.character.isDead) {
+                this.togglePause();
+            }
+        };
+
+        window.addEventListener('keydown', this.keydownHandler);
+        window.addEventListener('keyup', this.keyupHandler);
+        window.addEventListener('mousemove', this.mousemoveHandler);
+        window.addEventListener('blur', this.blurHandler);
     }
 
     private resize() {
@@ -189,7 +231,8 @@ export class Game {
             this.gameTime += dt;
             
             const intervalMs = SPAWN.DIFFICULTY[this.difficulty].interval;
-            if (this.gameTime - this.lastSpawnTime > intervalMs) {
+            // Only spawn naturally if NOT tutorial. Tutorial spawns exactly 1 enemy manually.
+            if (!this.isTutorial && this.gameTime - this.lastSpawnTime > intervalMs) {
                 this.spawnEnemy();
                 this.lastSpawnTime = this.gameTime;
             }
@@ -197,9 +240,9 @@ export class Game {
             // 1. Process player inputs (Only if alive)
             if (!this.character.isDead) {
                 const playerInput = {
-                    left: this.keys['KeyA'],
+                    left: this.keys['KeyA'] || this.keys['KeyQ'],
                     right: this.keys['KeyD'],
-                    jump: this.keys['Space'],
+                    jump: this.keys['Space'] || this.keys['KeyW'] || this.keys['KeyZ'],
                     flip: this.keys['KeyS']
                 };
                 
@@ -210,6 +253,8 @@ export class Game {
                 }
                 this.wasPlayerFlipPressed = playerInput.flip;
                 this.character.update(playerInput, { x: this.mouse.x, y: this.mouse.y }, this.gameTime);
+
+                if (this.isTutorial) this.updateTutorialProgress(playerInput);
             }
 
             // --- DEBUG KEY BLOCK (F: Kill Random Enemy) ---
@@ -240,9 +285,21 @@ export class Game {
                         // Screen shake on kill
                         this.shake = Math.max(this.shake, 12);
 
+                        // CrazyGames SDK: Happy Moment
+                        try {
+                            (window as any).CrazyGames?.SDK?.game?.happyMoment();
+                        } catch (e) {}
+
                         // Try drop medicine if not Nightmare
                         if (this.difficulty !== 'NIGHTMARE') {
-                            this.tryDropMedicine(enemy.torso.position.x, enemy.torso.position.y);
+                            const forced = this.isTutorial && this.killsInSession === 1;
+                            this.tryDropMedicine(enemy.torso.position.x, enemy.torso.position.y, forced);
+                            
+                            if (forced) {
+                                this.tutStep = 5;
+                                this.updateTutHud();
+                                if (this.tutHud) this.tutHud.style.display = 'block';
+                            }
                         }
                     }
 
@@ -299,13 +356,17 @@ export class Game {
             }
 
             // Show buttons if player is dead (no more victory condition)
-            if (this.character.isDead) {
+            if (this.character.isDead && !this.isTutorial) {
                 if (this.restartBtn.style.display !== 'block') {
                     this.saveGameProgress();
+                    // CrazyGames SDK: Gameplay Stop
+                    try {
+                        (window as any).CrazyGames?.SDK?.game?.gameplayStop();
+                    } catch (e) {}
                 }
                 this.restartBtn.style.display = 'block';
                 this.homeBtn.style.display = 'block';
-            } else {
+            } else if (!this.character.isDead) {
                 this.restartBtn.style.display = 'none';
                 this.homeBtn.style.display = 'none';
             }
@@ -313,7 +374,7 @@ export class Game {
 
         this.draw();
 
-        requestAnimationFrame(() => this.loop());
+        this.animationId = requestAnimationFrame(() => this.loop());
     }
 
     private togglePause() {
@@ -452,11 +513,21 @@ export class Game {
         this.medicines.forEach(m => Matter.Composite.remove(this.physics.world, m));
         this.medicines = [];
         
-        this.spawnEnemy(); // Spawn immediately on restart
+        // Only spawn enemy immediately if NOT in tutorial mode.
+        // In tutorial, we wait until basic controls are learned.
+        if (!this.isTutorial) {
+            this.spawnEnemy();
+        }
+        
         this.lastSpawnTime = this.gameTime;
         this.lastTick = Date.now();
 
         this.restartBtn.style.display = 'none';
+        
+        // CrazyGames SDK: Gameplay Start
+        try {
+            (window as any).CrazyGames?.SDK?.game?.gameplayStart();
+        } catch (e) {}
         
         // Let camera reset gracefully based on new player pos
     }
@@ -480,9 +551,20 @@ export class Game {
                  // Effect
                  this.vfx.spawn(med.position.x, med.position.y, (med.render.fillStyle as string), 15, 2.0);
                  
-                 // Remove
-                 Matter.Composite.remove(this.physics.world, med);
-                 this.medicines = this.medicines.filter(m => m !== med);
+                  // Remove
+                  Matter.Composite.remove(this.physics.world, med);
+                  this.medicines = this.medicines.filter(m => m !== med);
+
+                  if (this.isTutorial && this.tutStep === 5) {
+                      this.tutActions.medicine = true;
+                      this.tutStep = 6;
+                      this.updateTutHud();
+                      
+                      // Delay the final screen so they can see the medicine effect
+                      setTimeout(() => {
+                          this.showTutorialEndScreen();
+                      }, 5000);
+                  }
             }
             return;
         }
@@ -574,7 +656,13 @@ export class Game {
                 const inertiaScale = (bladeChar.sword?.inertia || COMBAT.REFERENCE_INERTIA) / COMBAT.REFERENCE_INERTIA;
                 const damage = (speed - threshold) * multiplier * COMBAT.DAMAGE_SCALE * bladeChar.damageMultiplier * inertiaScale;
                 
-                targetChar.takeDamage(damage, this.gameTime);
+                // Prevent player death in tutorial by passing minHp = 1
+                if (this.isTutorial && targetChar === this.character) {
+                    targetChar.takeDamage(damage, this.gameTime, 1);
+                } else {
+                    targetChar.takeDamage(damage, this.gameTime);
+                }
+                
                 targetChar.stunTimer = Math.min(30, Math.floor(damage * 1.5));
 
                 const forceDir = Vector.normalise(Vector.sub(target.position, blade.position));
@@ -596,20 +684,24 @@ export class Game {
         }
     }
 
-    private tryDropMedicine(x: number, y: number) {
+    private tryDropMedicine(x: number, y: number, forced: boolean = false) {
         // Pseudo-random: increase chance by 10% for every consecutive miss
         const pityBonus = this.medicinePityCount * 0.10;
         const rand = Math.random();
         let medConfig = null;
 
-        // Distribute pity bonus between large and small (30% to large, 70% to small)
-        const largeChance = MEDICINE.LARGE.chance + (pityBonus * 0.3);
-        const totalChance = (MEDICINE.LARGE.chance + MEDICINE.SMALL.chance) + pityBonus;
-
-        if (rand < largeChance) {
+        if (forced) {
             medConfig = MEDICINE.LARGE;
-        } else if (rand < totalChance) {
-            medConfig = MEDICINE.SMALL;
+        } else {
+            // Distribute pity bonus between large and small (30% to large, 70% to small)
+            const largeChance = MEDICINE.LARGE.chance + (pityBonus * 0.3);
+            const totalChance = (MEDICINE.LARGE.chance + MEDICINE.SMALL.chance) + pityBonus;
+
+            if (rand < largeChance) {
+                medConfig = MEDICINE.LARGE;
+            } else if (rand < totalChance) {
+                medConfig = MEDICINE.SMALL;
+            }
         }
 
         if (medConfig) {
@@ -797,5 +889,131 @@ export class Game {
         }
 
         this.ctx.textAlign = 'center'; // Restore for other calls
+    }
+
+    private setupTutorialHud() {
+        this.tutHud = document.createElement('div');
+        this.tutHud.className = 'tutorial-hud';
+        const container = this.canvas.parentElement;
+        if (container) container.appendChild(this.tutHud);
+        this.updateTutHud();
+    }
+
+    private updateTutHud() {
+        if (!this.tutHud) return;
+        const steps = ['TUT_MOVE', 'TUT_JUMP', 'TUT_FLIP', 'TUT_ATTACK', 'TUT_GOAL', 'TUT_MEDICINE', 'TUT_CONGRATS'];
+        this.tutHud.innerHTML = `<div class="tut-step">${this.t(steps[this.tutStep])}</div>`;
+    }
+
+    private updateTutorialProgress(input: any) {
+        if (this.tutStep === 0) {
+            if (input.left) this.tutActions.moveLeft = true;
+            if (input.right) this.tutActions.moveRight = true;
+        }
+        if (this.tutStep === 1 && input.jump) this.tutActions.jump = true;
+        if (this.tutStep === 2 && input.flip) this.tutActions.flip = true;
+        
+        // Detect a "swing" for the attack tutorial step
+        if (this.tutStep === 3 && this.character.sword && Math.abs(this.character.sword.angularVelocity) > 0.08) {
+            this.tutActions.attack = true;
+        }
+
+        const currentGoalMet = (() => {
+            if (this.tutTimer > 0) return false; // Waiting for transition
+            switch(this.tutStep) {
+                case 0: return this.tutActions.moveLeft && this.tutActions.moveRight;
+                case 1: return this.tutActions.jump;
+                case 2: return this.tutActions.flip;
+                case 3: return this.tutActions.attack;
+                case 5: return this.tutActions.medicine;
+                default: return false;
+            }
+        })();
+
+        if (currentGoalMet) {
+            if (this.tutStep === 5 || this.tutStep === 6) {
+                // Tutorial fully complete, hud handled by delayed showTutorialEndScreen
+                return;
+            }
+            if (this.tutStep === 3) {
+                // Fixed 4s delay for the attack hint as requested
+                this.tutTimer = 4000;
+                
+                // Pre-spawn enemy at 2s mark so they are walking in as the hint changes
+                setTimeout(() => {
+                    this.spawnEnemy();
+                }, 2000);
+
+                setTimeout(() => {
+                    this.tutTimer = 0;
+                    this.tutStep++;
+                    this.updateTutHud();
+                    this.startTutorialFinalPhase();
+                }, 4000);
+            } else {
+                this.tutStep++;
+                this.updateTutHud();
+                if (this.tutStep === 4) this.startTutorialFinalPhase();
+            }
+        }
+    }
+
+    private startTutorialFinalPhase() {
+        // Goal step: the enemy was already spawned in the timeout above
+        // No extra logic needed here for now
+    }
+
+    private showTutorialEndScreen() {
+        this.isPaused = true;
+        this.physics.runner.enabled = false;
+        if (this.tutHud) this.tutHud.style.display = 'none';
+        
+        const popup = document.createElement('div');
+        popup.className = 'tutorial-end-overlay';
+        popup.innerHTML = `
+            <h2>${this.t('TUT_END_TITLE')}</h2>
+            <p>${this.t('TUT_END_SUB')}</p>
+            <button id="tut-close-btn" style="background: var(--color-vermilion); color: var(--color-silk); border: 2px solid var(--color-gold); padding: 1rem 2.5rem; font-family: var(--font-heading); font-size: 1.5rem; font-weight: bold; cursor: pointer; transition: all 0.2s ease; margin-top: 20px; box-shadow: 4px 4px 0px var(--color-lacquer);">${this.t('I_KNOW')}</button>
+        `;
+        const container = this.canvas.parentElement;
+        if (container) container.appendChild(popup);
+        
+        document.getElementById('tut-close-btn')!.onclick = () => {
+            popup.remove();
+            
+            // CrazyGames SDK: Gameplay Stop
+            try {
+                (window as any).CrazyGames?.SDK?.game?.gameplayStop();
+            } catch (e) {}
+
+            if (this.onTutorialEnd) {
+                this.onTutorialEnd();
+            }
+        };
+    }
+
+    public destroy() {
+        this.isPaused = true;
+        this.physics.runner.enabled = false;
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = 0;
+        }
+        
+        Matter.Events.off(this.physics.engine, 'collisionStart', this.collisionHandler);
+        window.removeEventListener('keydown', this.keydownHandler);
+        window.removeEventListener('keyup', this.keyupHandler);
+        window.removeEventListener('mousemove', this.mousemoveHandler);
+        window.removeEventListener('blur', this.blurHandler);
+        
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        if (this.tutHud && this.tutHud.parentNode) {
+            this.tutHud.parentNode.removeChild(this.tutHud);
+        }
+        if (this.hellOverlay && this.hellOverlay.parentNode) {
+            this.hellOverlay.parentNode.removeChild(this.hellOverlay);
+        }
     }
 }

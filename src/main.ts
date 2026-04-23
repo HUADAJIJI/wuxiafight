@@ -16,6 +16,13 @@ Object.keys(attributes).forEach(key => {
 let totalScore = parseInt(localStorage.getItem('wuxia_total_score') || '0');
 let leaderboard: any[] = JSON.parse(localStorage.getItem('wuxia_leaderboard') || '[]');
 let currentLang: 'ZH' | 'EN' = (localStorage.getItem('wuxia_lang') as 'ZH' | 'EN') || 'EN';
+let onboarded = localStorage.getItem('wuxia_onboarded') === 'true';
+let menuTutState = 0; // 0=off, 1=cultivation, 2=leaderboard, 3=final message
+
+// Initialize for new players
+if (!onboarded) {
+    // We don't grant points here anymore. They are granted in completeOnboarding()
+}
 
 // --- 主菜单动态背景 ---
 const bgCanvas = document.createElement('canvas');
@@ -52,7 +59,24 @@ function drawMenuBackground() {
     menuAnimationId = requestAnimationFrame(drawMenuBackground);
 }
 // 启动主菜单背景动画
-drawMenuBackground();
+function startMenuBackground() {
+    bgCanvas.style.display = 'block';
+    if (!menuAnimationId) {
+        drawMenuBackground();
+    }
+}
+
+function stopMenuBackground() {
+    bgCanvas.style.display = 'none';
+    if (menuAnimationId) {
+        cancelAnimationFrame(menuAnimationId);
+        menuAnimationId = 0;
+    }
+}
+
+startMenuBackground();
+
+
 
 function t(key: any, params: any = {}) {
     return getTranslation(currentLang, key, params);
@@ -134,13 +158,15 @@ function renderUI() {
     `;
 
     setupEventListeners();
+    renderMenuTutorial();
 }
 
 function renderAttrRow(name: string, key: string, level: number) {
     const cost = getUpgradeCost(level);
     const canAfford = totalScore >= cost && level < CHARACTER.MAX_ATTR_LEVEL;
+    const desc = t(`DESC_${key.toUpperCase()}`);
     return `
-        <div class="attr-row">
+        <div class="attr-row" data-tooltip="${desc}">
             <div class="attr-info">
                 <span class="attr-name">${name}</span>
                 <span class="attr-level">${t('REALM')}: ${level} ${t('LEVEL')}</span>
@@ -148,6 +174,7 @@ function renderAttrRow(name: string, key: string, level: number) {
             <button class="upgrade-btn ${canAfford ? '' : 'disabled'}" data-attr="${key}" ${canAfford ? '' : 'disabled'}>
                 ${level >= CHARACTER.MAX_ATTR_LEVEL ? t('MAX_LEVEL') : `${t('UPGRADE')} (${cost})`}
             </button>
+            <div class="attr-tooltip-popup">${desc}</div>
         </div>
     `;
 }
@@ -172,11 +199,8 @@ function setupEventListeners() {
             startMenu.style.display = 'none';
             app.classList.remove('menu-mode');
             
-            // 停止菜单的背景动画，并移除背景 Canvas
-            cancelAnimationFrame(menuAnimationId);
-            if (bgCanvas.parentNode) {
-                bgCanvas.parentNode.removeChild(bgCanvas);
-            }
+            // 停止菜单的背景动画
+            stopMenuBackground();
             
             // 降低 UI 层的层级，并关闭鼠标穿透，确保不遮挡游戏画布
             uiRoot.style.zIndex = '5';
@@ -186,7 +210,15 @@ function setupEventListeners() {
             const mainTitle = document.getElementById('main-title');
             if (mainTitle) mainTitle.style.display = 'block';
             
-            new Game('app', diff, attributes, currentLang);
+            let game = new Game('app', diff, attributes, currentLang, false, () => {
+                // Game Over callback
+                game.destroy();
+                startMenuBackground();
+                uiRoot.style.zIndex = '10';
+                uiRoot.style.pointerEvents = 'auto';
+                app.classList.add('menu-mode');
+                renderUI();
+            });
         };
     });
 
@@ -200,6 +232,12 @@ function setupEventListeners() {
                 totalScore -= cost;
                 attributes[attrKey]++;
                 saveGame();
+                
+                // Advance tutorial if in phase 1
+                if (menuTutState === 1) {
+                    menuTutState = 2;
+                }
+                
                 renderUI();
             }
         };
@@ -217,4 +255,151 @@ function updateScale() {
 window.addEventListener('resize', updateScale);
 updateScale();
 
-renderUI();
+function renderWelcomeScreen() {
+    uiRoot.innerHTML = `
+        <div class="welcome-overlay">
+            <button id="lang-switch-welcome" class="lang-btn">${t('LANG_BTN')}</button>
+            <div class="welcome-content">
+                <h1>${t('WELCOME_TITLE')}</h1>
+                <p>${t('WELCOME_SUB')}</p>
+                <div class="welcome-actions">
+                    <button id="start-tut-btn">${t('START_TUTORIAL')}</button>
+                    <button id="skip-tut-btn" class="skip-btn">${t('SKIP_TUTORIAL')}</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('lang-switch-welcome')!.onclick = () => {
+        currentLang = currentLang === 'ZH' ? 'EN' : 'ZH';
+        localStorage.setItem('wuxia_lang', currentLang);
+        renderWelcomeScreen();
+    };
+
+    document.getElementById('start-tut-btn')!.onclick = () => startTutorial();
+    document.getElementById('skip-tut-btn')!.onclick = () => {
+        completeOnboarding();
+        renderUI();
+    };
+}
+
+function startTutorial() {
+    uiRoot.innerHTML = '';
+    stopMenuBackground();
+    
+    // Grant initial points immediately for entering tutorial
+    totalScore = 15;
+    localStorage.setItem('wuxia_total_score', '15');
+    
+    uiRoot.style.zIndex = '5';
+    uiRoot.style.pointerEvents = 'none';
+
+    let game = new Game('app', 'EASY', attributes, currentLang, true, () => {
+        // Tutorial finished callback
+        game.destroy();
+        startMenuBackground();
+        
+        // Restore UI interaction
+        uiRoot.style.zIndex = '10';
+        uiRoot.style.pointerEvents = 'auto';
+        app.classList.add('menu-mode');
+        
+        // Start post-game menu tutorial
+        setTimeout(() => {
+            menuTutState = 1;
+            renderUI();
+        }, 100);
+    });
+}
+
+function completeOnboarding() {
+    onboarded = true;
+    localStorage.setItem('wuxia_onboarded', 'true');
+}
+
+function highlightElement(el: HTMLElement) {
+    el.style.position = 'relative';
+    const guide = document.createElement('div');
+    guide.className = 'highlight-guide';
+    guide.style.width = 'calc(100% + 10px)';
+    guide.style.height = 'calc(100% + 10px)';
+    guide.style.top = '-5px';
+    guide.style.left = '-5px';
+    el.appendChild(guide);
+}
+
+function renderMenuTutorial() {
+    const panels = {
+        leader: document.querySelector('.leaderboard-panel') as HTMLElement,
+        center: document.querySelector('.center-panel') as HTMLElement,
+        right: document.querySelector('.right-panel') as HTMLElement,
+        lang: document.getElementById('lang-switch')
+    };
+
+    // Helper to toggle panel interaction
+    const setInteraction = (el: HTMLElement | null, enabled: boolean) => {
+        if (el) el.style.pointerEvents = enabled ? 'auto' : 'none';
+    };
+
+    if (menuTutState === 0) {
+        Object.values(panels).forEach(p => setInteraction(p, true));
+        return;
+    }
+
+    // Disable everything by default during tutorial
+    Object.values(panels).forEach(p => setInteraction(p, false));
+
+    if (menuTutState === 1) {
+        if (panels.right) {
+            setInteraction(panels.right, true);
+            highlightElement(panels.right);
+            
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tut-tooltip pos-left';
+            tooltip.innerHTML = `<p>${t('TUT_UPGRADE_HINT')}</p>`;
+            panels.right.appendChild(tooltip);
+        }
+    } else if (menuTutState === 2) {
+        if (panels.leader) {
+            setInteraction(panels.leader, true);
+            highlightElement(panels.leader);
+            
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tut-tooltip pos-right';
+            tooltip.style.pointerEvents = 'auto'; // Ensure tooltip is clickable
+            tooltip.innerHTML = `
+                <p>${t('TUT_RANK_HINT')}</p>
+                <button id="tut-rank-ok">${t('I_KNOW')}</button>
+            `;
+            panels.leader.appendChild(tooltip);
+            
+            document.getElementById('tut-rank-ok')!.onclick = (e) => {
+                e.stopPropagation();
+                menuTutState = 3;
+                renderUI();
+            };
+        }
+    } else if (menuTutState === 3) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'tut-tooltip pos-center';
+        tooltip.style.pointerEvents = 'auto';
+        tooltip.innerHTML = `
+            <p>${t('TUT_FINAL_HINT')}</p>
+            <button id="tut-final-ok">${t('I_KNOW')}</button>
+        `;
+        uiRoot.appendChild(tooltip);
+        
+        document.getElementById('tut-final-ok')!.onclick = (e) => {
+            e.stopPropagation();
+            menuTutState = 0;
+            completeOnboarding();
+            renderUI();
+        };
+    }
+}
+
+if (!onboarded) {
+    renderWelcomeScreen();
+} else {
+    renderUI();
+}
