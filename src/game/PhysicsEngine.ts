@@ -10,6 +10,8 @@ export class PhysicsEngine {
     this.engine = Matter.Engine.create();
     this.world = this.engine.world;
     this.world.gravity.y = PHYSICS.GRAVITY;
+    this.engine.positionIterations = 10;
+    this.engine.velocityIterations = 10;
     
     this.runner = Matter.Runner.create();
   }

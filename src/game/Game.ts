@@ -119,11 +119,12 @@ export class Game {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
             collisionGroup: this.playerGroup,
-            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (19 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
             damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
-            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
             stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * (0.495 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
-            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1))
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            internalPowerMultiplier: 1 + (this.attributes.neigong - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))
         });
 
         this.enemies = [];
@@ -347,12 +348,20 @@ export class Game {
         
         let hpMult = diffConfig.hpMultiplier;
         let dmgMult = diffConfig.damageMultiplier;
+        let moveMult = diffConfig.moveMultiplier;
+        let stiffnessMult = diffConfig.stiffnessMultiplier;
+        let thresholdMod = diffConfig.thresholdModifier;
+        let internalMult = diffConfig.internalPowerMultiplier;
 
         // Nightmare Scaling
         if (this.difficulty === 'NIGHTMARE') {
             const extraLayer = Math.floor(this.killsInSession / 5);
             hpMult += extraLayer * 0.2;
             dmgMult += extraLayer * 0.2;
+            moveMult += extraLayer * 0.1;
+            stiffnessMult += extraLayer * 0.02;
+            thresholdMod = Math.min(1.5, thresholdMod + extraLayer * 0.05);
+            internalMult += extraLayer * 0.2;
         }
 
         const enemy = new Character(spawnX, this.canvas.height - 200, this.physics.world, {
@@ -360,7 +369,11 @@ export class Game {
             farColor: '#1E3A5F',
             collisionGroup: this.enemyGroup,
             maxHp: CHARACTER.MAX_HP * hpMult,
-            damageMultiplier: dmgMult
+            damageMultiplier: dmgMult,
+            moveMultiplier: moveMult,
+            stiffnessMultiplier: stiffnessMult,
+            thresholdModifier: thresholdMod,
+            internalPowerMultiplier: internalMult
         });
 
         this.enemies.push(enemy);
@@ -423,11 +436,12 @@ export class Game {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
             collisionGroup: this.playerGroup,
-            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
+            maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (19 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
             damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
-            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (4 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            moveMultiplier: 1 + (this.attributes.shenfa - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
             stiffnessMultiplier: 1 + (this.attributes.shenfa - 1) * (0.495 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
-            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1))
+            thresholdModifier: (this.attributes.neigong - 1) * (1.35 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
+            internalPowerMultiplier: 1 + (this.attributes.neigong - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1))
         });
 
         this.enemies = [];
@@ -499,13 +513,17 @@ export class Game {
                 if (charA && charB) {
                     const normal = pair.collision.normal;
                     const recoil = COMBAT.CLASH.RECOIL_FORCE * speed;
+                    
+                    // Internal Power Imbalance: High neigong reduces own recoil and increases opponent's
+                    const imbalanceA = charB.internalPowerMultiplier / charA.internalPowerMultiplier;
+                    const imbalanceB = charA.internalPowerMultiplier / charB.internalPowerMultiplier;
 
                     // Physical Force
-                    Matter.Body.applyForce(parentA, bodyA.position, Vector.mult(normal, -recoil * 1.5));
-                    Matter.Body.applyForce(charA.torso, charA.torso.position, Vector.mult(normal, -recoil * 0.4));
+                    Matter.Body.applyForce(parentA, bodyA.position, Vector.mult(normal, -recoil * 1.5 * imbalanceA));
+                    Matter.Body.applyForce(charA.torso, charA.torso.position, Vector.mult(normal, -recoil * 0.4 * imbalanceA));
 
-                    Matter.Body.applyForce(parentB, bodyB.position, Vector.mult(normal, recoil * 1.5));
-                    Matter.Body.applyForce(charB.torso, charB.torso.position, Vector.mult(normal, recoil * 0.4));
+                    Matter.Body.applyForce(parentB, bodyB.position, Vector.mult(normal, recoil * 1.5 * imbalanceB));
+                    Matter.Body.applyForce(charB.torso, charB.torso.position, Vector.mult(normal, recoil * 0.4 * imbalanceB));
 
                     // Velocity Impulse
                     const impulseMag = speed * 0.5;

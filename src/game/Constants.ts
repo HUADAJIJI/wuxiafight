@@ -40,8 +40,8 @@ export const CHARACTER = {
   SWORD_HILT_WIDTH: 15,
   SWORD_HILT_HEIGHT: 5,
   YAODAO_CURVE: 15, // Degrees/offset for blade curve
-  YAODAO_MASS: 1.5,   // Reduced to prevent tipping character over
-  YAODAO_INERTIA: 30000, // Reduced from 80000 for better responsiveness
+  YAODAO_MASS: 0.8,   // Reduced to prevent tipping character over
+  YAODAO_INERTIA: 20000, // Reduced from 80000 for better responsiveness
   MAX_HP: 100,
   MAX_ATTR_LEVEL: 30,
 };
@@ -69,24 +69,40 @@ export const SPAWN = {
       interval: 30000,
       hpMultiplier: 0.6,
       damageMultiplier: 0.6,
+      moveMultiplier: 1.0,
+      stiffnessMultiplier: 1.0,
+      thresholdModifier: 0,
+      internalPowerMultiplier: 1.0,
       scoreReward: 1
     },
     MEDIUM: {
       interval: 20000,
       hpMultiplier: 1.0,
       damageMultiplier: 1.0,
+      moveMultiplier: 1.2,
+      stiffnessMultiplier: 1.05,
+      thresholdModifier: 0.2,
+      internalPowerMultiplier: 1.2,
       scoreReward: 2
     },
     HARD: {
       interval: 10000,
       hpMultiplier: 2.0,
       damageMultiplier: 2.0,
+      moveMultiplier: 1.8,
+      stiffnessMultiplier: 1.2,
+      thresholdModifier: 0.6,
+      internalPowerMultiplier: 2.0,
       scoreReward: 5
     },
     NIGHTMARE: {
       interval: 5000,
       hpMultiplier: 3.0,
       damageMultiplier: 3.0,
+      moveMultiplier: 2.5,
+      stiffnessMultiplier: 1.4,
+      thresholdModifier: 1.0,
+      internalPowerMultiplier: 4.0,
       scoreReward: 10
     }
   },
@@ -140,7 +156,7 @@ export const TRANSLATIONS = {
     RETRY_BTN: "再战一回",
     HOME_BTN: "归隐山林",
     PAUSE_TITLE: "战 局 中 止",
-    RESUME_BTN: "连 续 战 斗",
+    RESUME_BTN: "继 续 战 斗",
     QUIT_BTN: "退 出 战 局",
     DEFEAT_TITLE: "惜  败",
     DEFEAT_SUB: "无 尽 之 战 ， 终 有 一 死",

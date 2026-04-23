@@ -11,6 +11,7 @@ export interface CharacterOptions {
     stiffnessMultiplier?: number;
     moveMultiplier?: number;
     thresholdModifier?: number;
+    internalPowerMultiplier?: number;
 }
 
 export class Character {
@@ -33,6 +34,7 @@ export class Character {
     public stiffnessMultiplier: number = 1.0;
     public moveMultiplier: number = 1.0;
     public thresholdModifier: number = 0;
+    public internalPowerMultiplier: number = 1.0;
 
     // Target angles for PD control
     public targetAngles: { [key: string]: number } = {
@@ -59,6 +61,7 @@ export class Character {
         this.stiffnessMultiplier = options.stiffnessMultiplier || 1.0;
         this.moveMultiplier = options.moveMultiplier || 1.0;
         this.thresholdModifier = options.thresholdModifier || 0;
+        this.internalPowerMultiplier = options.internalPowerMultiplier || 1.0;
         this.composite = Matter.Composite.create({ label: 'Character' });
 
         const group = options.collisionGroup;
@@ -207,9 +210,15 @@ export class Character {
         this.applyPDControl();
 
         if (mousePos && this.sword) {
-            const shoulderX = this.torso.position.x + (this.facingDir * CHARACTER.TORSO_WIDTH / 2);
-            const dy = mousePos.y - (this.torso.position.y - 20);
+            const cos = Math.cos(this.torso.angle);
+            const sin = Math.sin(this.torso.angle);
+            const rx = this.facingDir * (CHARACTER.TORSO_WIDTH / 2);
+            const ry = -20; 
+            const shoulderX = this.torso.position.x + (rx * cos - ry * sin);
+            const shoulderY = this.torso.position.y + (rx * sin + ry * cos);
+
             const dx = mousePos.x - shoulderX;
+            const dy = mousePos.y - shoulderY;
             const targetAngle = Math.atan2(dy, dx);
 
             let normalizedTarget = targetAngle - this.torso.angle;
@@ -219,7 +228,7 @@ export class Character {
                 while (normalizedTarget < -Math.PI) normalizedTarget += Math.PI * 2;
             }
 
-            const baseTarget = Math.max(-1.2, Math.min(2.0, normalizedTarget));
+            const baseTarget = Math.max(-1.8, Math.min(2.0, normalizedTarget));
             
             // Only update shoulder target and apply sword torque if NOT stunned
             if (this.stunTimer <= 0) {
@@ -286,7 +295,7 @@ export class Character {
             const currentAngle = c.bodyB!.angle - c.bodyA!.angle;
             const target = (this.targetAngles[c.label] || 0) * this.facingDir;
             const torque = (target - currentAngle) * (stiffness * 10) - (c.bodyB!.angularVelocity - c.bodyA!.angularVelocity) * (damping * 5);
-            const limited = Math.max(-0.3, Math.min(0.3, torque));
+            const limited = Math.max(-0.8, Math.min(0.8, torque));
             c.bodyB!.torque += limited; c.bodyA!.torque -= limited;
         });
 
