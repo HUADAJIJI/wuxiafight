@@ -28,6 +28,9 @@ export class PhysicsEngine {
     const ground = Matter.Bodies.rectangle(x, y, width, height, {
       isStatic: true,
       friction: 1,
+      collisionFilter: {
+        category: PHYSICS.CATEGORIES.GROUND
+      },
       render: { fillStyle: '#3E2723' }
     });
     Matter.World.add(this.world, ground);

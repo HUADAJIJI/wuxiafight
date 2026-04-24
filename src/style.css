@@ -754,6 +754,15 @@ canvas {
   font-size: 1.4rem;
 }
 
+/* Safe positioning within parent panels */
+.tut-tooltip.pos-left,
+.tut-tooltip.pos-right {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+}
+
 .tut-tooltip button {
   background: var(--color-vermilion);
   color: var(--color-silk);

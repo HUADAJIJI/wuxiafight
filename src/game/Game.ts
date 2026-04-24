@@ -1,7 +1,7 @@
 import { PhysicsEngine } from './PhysicsEngine';
 import { Character } from './Character';
 import { AIController } from './AIController';
-import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE, getTranslation } from './Constants';
+import { COLORS, CHARACTER, COMBAT, SPAWN, MEDICINE, PHYSICS, getTranslation } from './Constants';
 import { ParticleSystem } from './VisualEffects';
 import { audioManager } from './Audio';
 import { BackgroundManager } from './Background';
@@ -137,6 +137,7 @@ export class Game {
             primaryColor: COLORS.VERMILION,
             farColor: '#7A1E1E',
             collisionGroup: this.playerGroup,
+            collisionCategory: PHYSICS.CATEGORIES.PLAYER,
             maxHp: CHARACTER.MAX_HP * (1 + (this.attributes.gengu - 1) * (19 / (CHARACTER.MAX_ATTR_LEVEL - 1))),
             damageMultiplier: 1 + (this.attributes.bili - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
             moveMultiplier: 1 + (this.attributes.shenfa - 1) * (9 / (CHARACTER.MAX_ATTR_LEVEL - 1)),
@@ -429,6 +430,7 @@ export class Game {
             primaryColor: COLORS.INDIGO,
             farColor: '#1E3A5F',
             collisionGroup: this.enemyGroup,
+            collisionCategory: PHYSICS.CATEGORIES.ENEMY,
             maxHp: CHARACTER.MAX_HP * hpMult,
             damageMultiplier: dmgMult,
             moveMultiplier: moveMult,
@@ -597,8 +599,11 @@ export class Game {
                     const recoil = COMBAT.CLASH.RECOIL_FORCE * speed;
                     
                     // Internal Power Imbalance: High neigong reduces own recoil and increases opponent's
-                    const imbalanceA = charB.internalPowerMultiplier / charA.internalPowerMultiplier;
-                    const imbalanceB = charA.internalPowerMultiplier / charB.internalPowerMultiplier;
+                    // Clamped to prevent extreme physics impulses
+                    const rawImbalanceA = charB.internalPowerMultiplier / charA.internalPowerMultiplier;
+                    const rawImbalanceB = charA.internalPowerMultiplier / charB.internalPowerMultiplier;
+                    const imbalanceA = Math.min(PHYSICS.MAX_IMBALANCE, Math.max(1/PHYSICS.MAX_IMBALANCE, rawImbalanceA));
+                    const imbalanceB = Math.min(PHYSICS.MAX_IMBALANCE, Math.max(1/PHYSICS.MAX_IMBALANCE, rawImbalanceB));
 
                     // Physical Force
                     Matter.Body.applyForce(parentA, bodyA.position, Vector.mult(normal, -recoil * 1.5 * imbalanceA));
@@ -609,8 +614,8 @@ export class Game {
 
                     // Velocity Impulse
                     const impulseMag = speed * 0.5;
-                    const impulseA = Vector.mult(normal, -impulseMag);
-                    const impulseB = Vector.mult(normal, impulseMag);
+                    const impulseA = Vector.mult(normal, -impulseMag * imbalanceA);
+                    const impulseB = Vector.mult(normal, impulseMag * imbalanceB);
                     
                     Matter.Body.setVelocity(parentA, Vector.add(parentA.velocity, impulseA));
                     Matter.Body.setVelocity(parentB, Vector.add(parentB.velocity, impulseB));
@@ -712,8 +717,8 @@ export class Game {
                 frictionAir: 0.02,
                 restitution: 0.5,
                 collisionFilter: {
-                    group: 0, // No specific group
-                    mask: 1   // Only collide with Default Category (usually just the Ground)
+                    category: PHYSICS.CATEGORIES.MEDICINE,
+                    mask: PHYSICS.CATEGORIES.GROUND | PHYSICS.CATEGORIES.PLAYER
                 },
                 render: { fillStyle: medConfig.color }
             });
@@ -752,7 +757,9 @@ export class Game {
 
         const entities = [this.character, ...this.enemies];
         const allBodies = Matter.Composite.allBodies(this.physics.world);
-        allBodies.forEach(body => {
+        
+        // --- Layered Drawing ---
+        const drawBody = (body: Matter.Body) => {
             const partsToDraw = body.parts.length > 1 ? body.parts.slice(1) : [body];
             partsToDraw.forEach(part => {
                 this.ctx.save();
@@ -764,10 +771,7 @@ export class Game {
                 }
                 this.ctx.closePath();
                 
-                // --- Dynamic Lighting Effect ---
                 const lightIntensity = this.bg.getLightIntensity(part.position.x, part.position.y);
-                
-                // Highlight only appears if there is enough light transmission
                 if (lightIntensity > 0.2) {
                     this.ctx.shadowColor = `rgba(255, 250, 180, ${(0.8 * lightIntensity).toFixed(2)})`;
                     this.ctx.shadowBlur = 10 * lightIntensity;
@@ -778,7 +782,6 @@ export class Game {
                 this.ctx.fillStyle = (part.render.fillStyle as string) || COLORS.GOLD;
                 this.ctx.fill();
                 
-                // Reset shadow for stroke
                 this.ctx.shadowColor = 'transparent';
                 this.ctx.shadowBlur = 0;
                 this.ctx.shadowOffsetX = 0;
@@ -789,7 +792,16 @@ export class Game {
                 this.ctx.stroke();
                 this.ctx.restore();
             });
-        });
+        };
+
+        // 1. Draw Ground
+        allBodies.filter(b => b.label === 'ground').forEach(drawBody);
+        
+        // 2. Draw Characters
+        allBodies.filter(b => !b.label?.startsWith('medicine_') && b.label !== 'ground').forEach(drawBody);
+        
+        // 3. Draw Medicines (Always on top of characters)
+        this.medicines.forEach(drawBody);
 
         // 5. Draw Foreground (Grass and Overlay - in front of characters)
         const grassEntities = entities.map(e => ({ x: e.torso.position.x, width: 40 }));

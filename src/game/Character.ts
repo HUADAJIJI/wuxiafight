@@ -12,6 +12,7 @@ export interface CharacterOptions {
     moveMultiplier?: number;
     thresholdModifier?: number;
     internalPowerMultiplier?: number;
+    collisionCategory?: number;
 }
 
 export class Character {
@@ -65,12 +66,14 @@ export class Character {
         this.composite = Matter.Composite.create({ label: 'Character' });
 
         const group = options.collisionGroup;
+        const category = options.collisionCategory || PHYSICS.CATEGORIES.GROUND;
+        const getFilter = () => ({ group, category });
         const front = this.facingDir;
         const back = -this.facingDir;
 
         // 1. Create Parts
         this.torso = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH, CHARACTER.TORSO_HEIGHT, {
-            collisionFilter: { group },
+            collisionFilter: getFilter(),
             friction: PHYSICS.FRICTION,
             frictionAir: PHYSICS.FRICTION_AIR / this.moveMultiplier, // Reduce air resistance as speed moves up
             render: { fillStyle: options.primaryColor },
@@ -78,7 +81,7 @@ export class Character {
         });
 
         this.head = Matter.Bodies.circle(x, y - CHARACTER.TORSO_HEIGHT / 2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS, {
-            collisionFilter: { group },
+            collisionFilter: getFilter(),
             frictionAir: PHYSICS.FRICTION_AIR,
             render: { fillStyle: COLORS.SILK },
             label: 'head'
@@ -86,12 +89,12 @@ export class Character {
 
         // Visual Details
         const headband = Matter.Bodies.rectangle(x, y - CHARACTER.TORSO_HEIGHT / 2 - CHARACTER.HEAD_RADIUS, CHARACTER.HEAD_RADIUS * 2.2, 4, {
-            collisionFilter: { group },
+            collisionFilter: getFilter(),
             render: { fillStyle: COLORS.LACQUER },
             label: 'head'
         });
         const sash = Matter.Bodies.rectangle(x, y, CHARACTER.TORSO_WIDTH + 2, 8, {
-            collisionFilter: { group },
+            collisionFilter: getFilter(),
             angle: Math.PI / 4,
             render: { fillStyle: COLORS.GOLD },
             label: 'torso'
@@ -106,15 +109,15 @@ export class Character {
         const hipW = 10;
 
         // "Left" limbs are always "Back", "Right" limbs are always "Front"
-        this.limbs.l_upper_arm = this.createLimb(x + back * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
-        this.limbs.l_lower_arm = this.createLimb(x + back * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, farColor);
-        this.limbs.r_upper_arm = this.createLimb(x + front * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, nearColor);
-        this.limbs.r_lower_arm = this.createLimb(x + front * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, group, nearColor);
+        this.limbs.l_upper_arm = this.createLimb(x + back * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, getFilter(), farColor);
+        this.limbs.l_lower_arm = this.createLimb(x + back * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, getFilter(), farColor);
+        this.limbs.r_upper_arm = this.createLimb(x + front * shoulderW, y - 20, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, getFilter(), nearColor);
+        this.limbs.r_lower_arm = this.createLimb(x + front * shoulderW, y + 10, CHARACTER.ARM_WIDTH, CHARACTER.ARM_HEIGHT, getFilter(), nearColor);
 
-        this.limbs.l_upper_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
-        this.limbs.l_lower_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, farColor);
-        this.limbs.r_upper_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, nearColor);
-        this.limbs.r_lower_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, group, nearColor);
+        this.limbs.l_upper_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, getFilter(), farColor);
+        this.limbs.l_lower_leg = this.createLimb(x + back * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, getFilter(), farColor);
+        this.limbs.r_upper_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, getFilter(), nearColor);
+        this.limbs.r_lower_leg = this.createLimb(x + front * hipW, y + CHARACTER.TORSO_HEIGHT / 2 + 40, CHARACTER.LEG_WIDTH, CHARACTER.LEG_HEIGHT, getFilter(), nearColor);
 
         // 2. Constraints
         this.addJoint(this.torso, this.head, { x: 0, y: -CHARACTER.TORSO_HEIGHT / 2 }, { x: 0, y: CHARACTER.HEAD_RADIUS }, 'neck');
@@ -160,7 +163,7 @@ export class Character {
 
         this.sword = Matter.Body.create({
             parts: [bladeBase, bladeTip, guard, handle],
-            collisionFilter: { group },
+            collisionFilter: getFilter(),
             mass: CHARACTER.YAODAO_MASS,
             label: 'sword'
         });
@@ -182,9 +185,9 @@ export class Character {
         Matter.World.add(world, this.composite);
     }
 
-    private createLimb(x: number, y: number, w: number, h: number, group: number, color: string) {
+    private createLimb(x: number, y: number, w: number, h: number, filter: any, color: string) {
         return Matter.Bodies.rectangle(x, y, w, h, {
-            collisionFilter: { group },
+            collisionFilter: filter,
             friction: PHYSICS.FRICTION, frictionAir: PHYSICS.FRICTION_AIR,
             render: { fillStyle: color },
             label: 'limb'
@@ -281,6 +284,11 @@ export class Character {
         const balanceK = PHYSICS.TORSO_K * this.moveMultiplier;
         const balanceD = PHYSICS.TORSO_D * Math.sqrt(this.moveMultiplier);
         this.torso.torque += angleErr * balanceK - this.torso.angularVelocity * balanceD;
+
+        // Cap upward velocity to prevent flying out of screen
+        if (this.torso.velocity.y < -PHYSICS.MAX_VELOCITY_Y) {
+            Matter.Body.setVelocity(this.torso, { x: this.torso.velocity.x, y: -PHYSICS.MAX_VELOCITY_Y });
+        }
     }
 
     private applyPDControl() {

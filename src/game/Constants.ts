@@ -25,6 +25,14 @@ export const PHYSICS = {
   TORSO_D: 0.15,        // Standard balance damping
   SWORD_STIFFNESS: 1.5,
   SWORD_DAMPING: 0.5,   // Increased from 0.25 to prevent jitter
+  CATEGORIES: {
+    GROUND: 0x0001,
+    PLAYER: 0x0002,
+    ENEMY: 0x0004,
+    MEDICINE: 0x0008
+  },
+  MAX_VELOCITY_Y: 15,    // Cap upward velocity to prevent flying away
+  MAX_IMBALANCE: 2.5     // Cap internal power recoil multiplier
 };
 
 export const CHARACTER = {
@@ -41,7 +49,7 @@ export const CHARACTER = {
   SWORD_HILT_HEIGHT: 5,
   YAODAO_CURVE: 15, // Degrees/offset for blade curve
   YAODAO_MASS: 0.8,   // Reduced to prevent tipping character over
-  YAODAO_INERTIA: 20000, // Reduced from 80000 for better responsiveness
+  YAODAO_INERTIA: 30000, // Balanced for responsiveness and weight
   MAX_HP: 100,
   MAX_ATTR_LEVEL: 30,
 };
